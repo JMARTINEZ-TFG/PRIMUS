@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { LoanProduct } from "./loans-data";
+import { PESOS_PRODUCTS, UVA_PRODUCTS, type LoanProduct } from "./loans-data";
 
 // ─── Parser formato propio (id;entidad;tipo;tna;tea;cft;...) ─────────────────
 
@@ -132,25 +132,37 @@ function parseBcraFormat(text: string): LoanProduct[] {
 // ─── Server function ──────────────────────────────────────────────────────────
 
 export const getLoanProducts = createServerFn({ method: "GET" }).handler(async () => {
-  const csvPath = path.join(process.cwd(), "data", "personales.csv");
-  const buf = await fs.readFile(csvPath);
+  try {
+    // Nombre exacto: en Linux (Vercel) el filesystem distingue mayúsculas.
+    const csvPath = path.join(process.cwd(), "data", "PERSONALES.CSV");
+    const buf = await fs.readFile(csvPath);
 
-  // Quitar BOM si está presente
-  const offset = (buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) ? 3 : 0;
-  const raw = buf.slice(offset);
+    // Quitar BOM si está presente
+    const offset = (buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) ? 3 : 0;
+    const raw = buf.slice(offset);
 
-  // Detectar formato por número de columnas (insensible al encoding)
-  // BCRA tiene 21 columnas; el formato propio empieza con "id;"
-  const firstLine = raw.toString("utf-8").trimStart().split(/\r?\n/)[0] ?? "";
-  const isBcra = !firstLine.startsWith("id;") && firstLine.split(";").length >= 15;
+    // Detectar formato por número de columnas (insensible al encoding)
+    // BCRA tiene 21 columnas; el formato propio empieza con "id;"
+    const firstLine = raw.toString("utf-8").trimStart().split(/\r?\n/)[0] ?? "";
+    const isBcra = !firstLine.startsWith("id;") && firstLine.split(";").length >= 15;
 
-  // BCRA usa Windows-1252 / Latin-1; el formato propio es UTF-8
-  const text = isBcra ? raw.toString("latin1") : raw.toString("utf-8");
+    // BCRA usa Windows-1252 / Latin-1; el formato propio es UTF-8
+    const text = isBcra ? raw.toString("latin1") : raw.toString("utf-8");
 
-  const all = isBcra ? parseBcraFormat(text) : parseCustomFormat(text);
+    const all = isBcra ? parseBcraFormat(text) : parseCustomFormat(text);
+    if (all.length === 0) throw new Error("CSV sin productos válidos");
 
-  return {
-    pesos: all.filter(p => p.tipo === "pesos").sort((a, b) => a.cft - b.cft),
-    uva:   all.filter(p => p.tipo === "uva").sort((a, b) => a.cft - b.cft),
-  };
+    return {
+      pesos: all.filter(p => p.tipo === "pesos").sort((a, b) => a.cft - b.cft),
+      uva:   all.filter(p => p.tipo === "uva").sort((a, b) => a.cft - b.cft),
+    };
+  } catch (err) {
+    // En producción (serverless) el CSV puede no estar disponible en el bundle.
+    // Fallback a los datos estáticos curados (misma fuente BCRA jun 2026).
+    console.error("[loans] no se pudo leer PERSONALES.CSV, usando datos estáticos:", err);
+    return {
+      pesos: [...PESOS_PRODUCTS].sort((a, b) => a.cft - b.cft),
+      uva:   [...UVA_PRODUCTS].sort((a, b) => a.cft - b.cft),
+    };
+  }
 });
