@@ -2,11 +2,26 @@ import { Resend } from "resend";
 
 const client = new Resend(process.env.RESEND_API_KEY);
 
+type SendOpts = { from: string; to: string; subject: string; html: string };
+
+async function sendEmail(opts: SendOpts): Promise<void> {
+  if (!process.env.RESEND_API_KEY) {
+    console.error("[resend] RESEND_API_KEY no está configurada");
+    throw new Error("RESEND_API_KEY no está configurada");
+  }
+  const { data, error } = await client.emails.send(opts);
+  if (error) {
+    console.error("[resend] error al enviar email:", JSON.stringify(error), "-> to:", opts.to);
+    throw new Error(`Resend: ${error.message ?? JSON.stringify(error)}`);
+  }
+  console.log("[resend] email enviado id:", data?.id, "-> to:", opts.to);
+}
+
 export async function sendPasswordResetEmail(to: string, token: string): Promise<void> {
   const base = process.env.APP_URL ?? "http://localhost:8080";
   const link = `${base}/reset-password?token=${token}`;
 
-  await client.emails.send({
+  await sendEmail({
     from: "Primus <onboarding@resend.dev>",
     to,
     subject: "Recuperá tu contraseña en Primus",
@@ -29,7 +44,7 @@ export async function sendPasswordResetEmail(to: string, token: string): Promise
 }
 
 export async function sendUnlockApprovedEmail(to: string): Promise<void> {
-  await client.emails.send({
+  await sendEmail({
     from: "Primus <onboarding@resend.dev>",
     to,
     subject: "Tu cuenta fue desbloqueada en Primus",
@@ -51,7 +66,7 @@ export async function sendVerificationEmail(to: string, token: string): Promise<
   const base = process.env.APP_URL ?? "http://localhost:3000";
   const link = `${base}/verify-email?token=${token}`;
 
-  await client.emails.send({
+  await sendEmail({
     from: "Primus <onboarding@resend.dev>",
     to,
     subject: "Confirmá tu cuenta en Primus",
