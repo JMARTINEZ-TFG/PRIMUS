@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PrimusLogo } from "@/components/PrimusLogo";
 import { toast } from "sonner";
-import { registerUser, loginUser } from "@/lib/api/auth.functions";
+import { registerUser, loginUser, requestAccountUnlock, requestPasswordReset } from "@/lib/api/auth.functions";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Ingresar — Primus" }] }),
@@ -18,7 +18,8 @@ type Mode = "login" | "register" | "recover";
 const ERROR_MESSAGES: Record<string, string> = {
   EMAIL_TAKEN: "Este email ya está registrado. Probá iniciar sesión.",
   INVALID_CREDENTIALS: "Correo o clave incorrectos.",
-  ACCOUNT_LOCKED: "Cuenta bloqueada por múltiples intentos fallidos. Intentá en 15 minutos.",
+  ACCOUNT_LOCKED: "Cuenta bloqueada por múltiples intentos fallidos.",
+  EMAIL_NOT_VERIFIED: "Debés verificar tu correo antes de ingresar. Revisá tu bandeja de entrada.",
 };
 
 function parseServerError(error: unknown): string {
@@ -35,13 +36,20 @@ function Auth() {
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [locked, setLocked] = useState(false);
   const [touched, setTouched] = useState({ email: false, password: false });
   const navigate = useNavigate();
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const passLen = password.length >= 8;
+  const passValid =
+    passLen &&
+    /[A-Z]/.test(password) &&
+    /[a-z]/.test(password) &&
+    /[0-9]/.test(password) &&
+    /[^A-Za-z0-9]/.test(password);
   const showEmailErr = touched.email && !emailValid;
-  const showPassErr = touched.password && mode === "register" && !passLen;
+  const showPassErr = touched.password && mode === "register" && !passValid;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,8 +59,16 @@ function Auth() {
     if (!emailValid) return toast.error("Email inválido.");
 
     if (mode === "recover") {
-      toast.success("Te enviamos un enlace de recuperación.");
-      setMode("login");
+      setLoading(true);
+      try {
+        await requestPasswordReset({ data: { email } });
+        toast.success("Si el correo existe, te enviamos un enlace de recuperación.");
+        setMode("login");
+      } catch {
+        toast.error("Ocurrió un error. Intentá de nuevo.");
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -63,13 +79,17 @@ function Auth() {
     try {
       if (mode === "register") {
         await registerUser({ data: { email, password } });
-        toast.success("Cuenta creada. ¡Bienvenido!");
+        toast.success("Cuenta creada. Revisá tu correo para activar tu cuenta.");
+        setMode("login");
+        setPassword("");
       } else {
-        await loginUser({ data: { email, password } });
-        toast.success("Bienvenido de vuelta.");
+        const result = await loginUser({ data: { email, password } });
+        toast.success(result.firstLogin ? "Bienvenido." : "Bienvenido de vuelta.");
+        navigate({ to: result.isAdmin ? "/admin" : "/dashboard" });
       }
-      navigate({ to: "/dashboard" });
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("ACCOUNT_LOCKED")) setLocked(true);
       toast.error(parseServerError(err));
     } finally {
       setLoading(false);
@@ -161,8 +181,8 @@ function Auth() {
                   </button>
                 </div>
                 {mode === "register" && (
-                  <p className={`mt-1 flex items-center gap-1 text-xs ${passLen ? "text-success" : showPassErr ? "text-destructive" : "text-muted-foreground"}`}>
-                    {passLen ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
+                  <p className={`mt-1 flex items-center gap-1 text-xs ${passValid ? "text-success" : showPassErr ? "text-destructive" : "text-muted-foreground"}`}>
+                    {passValid ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
                     Mínimo 8 caracteres (mayúscula, minúscula, número y carácter especial).
                   </p>
                 )}
@@ -185,6 +205,29 @@ function Auth() {
               </button>
             )}
           </form>
+
+          {locked && (
+            <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-center">
+              <p className="text-xs text-destructive font-medium">Tu cuenta está bloqueada por múltiples intentos fallidos.</p>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3 w-full rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10"
+                onClick={async () => {
+                  if (!email) { toast.error("Ingresá tu email primero."); return; }
+                  try {
+                    await requestAccountUnlock({ data: { email } });
+                    setLocked(false);
+                    toast.success("Solicitud registrada. Un administrador la procesará a la brevedad.");
+                  } catch {
+                    toast.error("No se pudo procesar la solicitud. Intentá más tarde.");
+                  }
+                }}
+              >
+                Solicitar blanqueo de clave
+              </Button>
+            </div>
+          )}
 
           <p className="mt-8 text-center text-xs text-muted-foreground">
             Al continuar aceptás los Términos y Política de Privacidad de Primus.

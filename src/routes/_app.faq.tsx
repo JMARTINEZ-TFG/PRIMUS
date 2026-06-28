@@ -99,6 +99,19 @@ La ventaja principal frente al plazo fijo es la liquidez total: podés retirar t
 
 Muchas billeteras digitales (Ualá, Naranja X, Brubank, etc.) ofrecen este tipo de producto como alternativa de corto plazo para no dejar el dinero parado en una caja de ahorro sin rendimiento.`,
       },
+      {
+        q: "¿Qué es un Fondo Común de Inversión (FCI)?",
+        a: `Un Fondo Común de Inversión (FCI) es un vehículo de inversión colectiva regulado por la CNV (Comisión Nacional de Valores). Reunís tu dinero junto con el de otros inversores, y una Sociedad Gerente lo administra profesionalmente invirtiéndolo en distintos activos según el perfil del fondo.
+
+Los FCI de tipo Money Market (o Mercado de Dinero) son los más conservadores: invierten en instrumentos de muy corto plazo como plazos fijos bancarios, cauciones bursátiles y letras del Tesoro. Tienen liquidez inmediata (rescate en el día o al día siguiente) y su rendimiento fluctúa diariamente.
+
+Ejemplos: Mercado Fondo (Mercado Pago), Ualintec Ahorro Pesos (Ualá), Vinci Compass Liquidez (Lemon Cash).
+
+Ventajas frente al plazo fijo: liquidez inmediata y capitalización diaria.
+Diferencia con la cuenta remunerada: en un FCI sos copropietario de una cartera de activos; en una cuenta remunerada el dinero es un depósito en la entidad.
+
+La TNA que muestra Primus corresponde al rendimiento de los últimos 7 días anualizado, publicado diariamente por la CNV.`,
+      },
     ],
   },
   {

@@ -40,6 +40,8 @@ const LOCAL_LOGOS: Record<string, string> = {
   "Banco Galicia":     "/logos/galicia.png",
   "Banco Macro":       "/logos/macro.png",
   "Banco Patagonia":   "/logos/patagonia.png",
+  "Bancor":            "/logos/bancor.png",
+  "Brubank":           "/logos/brubank.png",
 };
 
 const FAVICON_DOMAINS: Record<string, string> = {
@@ -117,7 +119,7 @@ function Loans() {
   });
   const [inputStr, setInputStr]       = useState(() => fmtArs(amount));
   const amountRef                     = useRef<HTMLInputElement>(null);
-  const [plazo, setPlazo]             = useState(24);
+  const [plazo, setPlazo]             = useState(6);
   const [selectedIdx, setSelectedIdx] = useState(0);
 
   const selected     = pesos[selectedIdx] as LoanProduct | undefined;
@@ -140,7 +142,7 @@ function Loans() {
           <div className="flex-1">
             <h3 className="text-base font-semibold">Calculadora de Cuotas</h3>
             <p className="text-xs text-muted-foreground">
-              Seleccioná una entidad del ranking para calcular tu cuota mensual.
+              Seleccioná una opción del ranking para calcular tu cuota mensual.
             </p>
           </div>
         </div>
@@ -148,7 +150,7 @@ function Loans() {
         <div className="mt-5 space-y-4">
           <div className="grid gap-4 md:grid-cols-2 md:items-end">
             <div>
-              <Label htmlFor="amount">Monto (ARS)</Label>
+              <Label htmlFor="amount">Monto a solicitar (ARS)</Label>
               <Input
                 ref={amountRef}
                 id="amount"
@@ -230,9 +232,9 @@ function Loans() {
       {/* ── Ranking ── */}
       <Card className="rounded-2xl border-border p-5 shadow-[var(--shadow-soft)]">
         <div>
-          <h3 className="text-base font-semibold">Ranking por Costo Financiero Total</h3>
+          <h3 className="text-base font-semibold">Ranking Oferta Crediticia</h3>
           <p className="text-xs text-muted-foreground">
-            {pesos.length} principales oferentes · ordenado de menor a mayor CFT
+            Principales oferentes · ordenado de menor a mayor CFT
           </p>
         </div>
 

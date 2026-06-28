@@ -1,15 +1,21 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "../db.server";
 
-// ─── ArgentinaDatos — Tasas Plazo Fijo ───────────────────────────────────────
+// ─── BCRA — Tasas Plazo Fijo ─────────────────────────────────────────────────
 
-type ArgDatosRate = {
+type BCRARate = {
+  codigo: number;
   entidad: string;
-  logo: string | null;
-  tnaClientes: number;      // decimal, e.g. 0.19 = 19%
-  tnaNoClientes: number;
-  enlace: string | null;
-  condicionesCorto: string | null;
+  logo_url: string;
+  tasa_con_relacion: number;   // % TNA clientes
+  tasa_sin_relacion: number;   // % TNA no clientes
+  web: string;
+};
+
+type BCRAResponse = {
+  success: boolean;
+  top10: BCRARate[];
+  otros:  BCRARate[];
 };
 
 export type PlazofijRate = {
@@ -68,6 +74,26 @@ type ArgDatosCuenta = {
   condicionesCorto: string | null;
 };
 
+type FCIFondo = {
+  nombre: string;
+  tipoRenta: string;
+  plazoLiquidacionDias: number;
+  fecha: string;
+  rendimientos: { ultimos7Dias: number } | null;
+};
+
+// Mapeo: nombre exacto del fondo FCI → entidad comercial que lo distribuye
+const FCI_MONEY_MARKET: Record<string, string> = {
+  "Mercado Fondo - Clase A":             "Mercado Pago",
+  "Ualintec Ahorro Pesos - Clase A":     "Ualá",
+  "Vinci Compass Liquidez - Clase F":    "Lemon Cash",
+  "Delta Pesos - Clase X":               "Personal Pay",
+  "Delta Pesos - Clase A":               "Fiwind",
+  "Cocos Ahorro - Clase A":              "Cocos",
+  "Premier Renta CP en Pesos - Clase A": "Banco Supervielle",
+  "Fima Premium - Clase A":              "Banco Galicia",
+};
+
 export type CuentaRemunRate = {
   nombre: string;
   tna: number;              // percentage, e.g. 27
@@ -105,41 +131,72 @@ function formatTope(tope: number | null): string | null {
 }
 
 export const getCuentasRemuneradas = createServerFn({ method: "GET" }).handler(async () => {
-  const res = await fetch("https://api.argentinadatos.com/v1/finanzas/fci/otros/ultimo", {
-    signal: AbortSignal.timeout(8000),
-    headers: { Accept: "application/json" },
-  });
-  if (!res.ok) throw new Error(`ArgentinaDatos respondió ${res.status}`);
-  const data = (await res.json()) as ArgDatosCuenta[];
-  return data
+  const fciCovered = new Set(Object.values(FCI_MONEY_MARKET));
+
+  const [otrosRes, fondosRes] = await Promise.all([
+    fetch("https://api.argentinadatos.com/v1/finanzas/fci/otros/ultimo", {
+      signal: AbortSignal.timeout(8000),
+      headers: { Accept: "application/json" },
+    }),
+    fetch("https://api.argentinadatos.com/v1/finanzas/fci/fondos", {
+      signal: AbortSignal.timeout(8000),
+      headers: { Accept: "application/json" },
+    }),
+  ]);
+  if (!otrosRes.ok) throw new Error(`ArgentinaDatos /otros respondió ${otrosRes.status}`);
+  if (!fondosRes.ok) throw new Error(`ArgentinaDatos /fondos respondió ${fondosRes.status}`);
+
+  const otrosData  = (await otrosRes.json()) as ArgDatosCuenta[];
+  const fondosData = (await fondosRes.json()) as { fondos: FCIFondo[] };
+
+  // Billeteras y cuentas no-FCI — excluir entidades ya cubiertas por FCI
+  const fromOtros: CuentaRemunRate[] = otrosData
     .filter((r) => r.tna > 0)
     .map((r): CuentaRemunRate => ({
-      nombre:          CUENTA_NAMES[r.fondo] ?? r.fondo,
-      tna:             Math.round(r.tna * 10000) / 100,
-      tea:             tnaToTea(r.tna * 100),
-      tope:            formatTope(r.tope),
-      fecha:           r.fecha,
+      nombre:           CUENTA_NAMES[r.fondo] ?? r.fondo,
+      tna:              Math.round(r.tna * 10000) / 100,
+      tea:              tnaToTea(r.tna * 100),
+      tope:             formatTope(r.tope),
+      fecha:            r.fecha,
       condicionesCorto: r.condicionesCorto ?? null,
     }))
-    .sort((a, b) => b.tna - a.tna);
+    .filter((r) => !fciCovered.has(r.nombre));
+
+  // Fondos Money Market conocidos → nombre de entidad comercial
+  const fromFCI: CuentaRemunRate[] = fondosData.fondos
+    .filter((f) => FCI_MONEY_MARKET[f.nombre] && (f.rendimientos?.ultimos7Dias ?? 0) > 0)
+    .map((f): CuentaRemunRate => ({
+      nombre:           FCI_MONEY_MARKET[f.nombre],
+      tna:              Math.round((f.rendimientos!.ultimos7Dias) * 100) / 100,
+      tea:              tnaToTea(f.rendimientos!.ultimos7Dias),
+      tope:             null,
+      fecha:            f.fecha,
+      condicionesCorto: null,
+    }));
+
+  return {
+    billeteras: fromOtros.sort((a, b) => b.tna - a.tna),
+    fci:        fromFCI.sort((a, b) => b.tna - a.tna),
+  };
 });
 
 export const getPlazofijo = createServerFn({ method: "GET" }).handler(async () => {
-  const res = await fetch("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", {
+  const res = await fetch("https://www.bcra.gob.ar/api/endpoints/plazos-fijos.php", {
     signal: AbortSignal.timeout(8000),
     headers: { Accept: "application/json" },
   });
-  if (!res.ok) throw new Error(`ArgentinaDatos respondió ${res.status}`);
-  const data = (await res.json()) as ArgDatosRate[];
-  return data
+  if (!res.ok) throw new Error(`BCRA respondió ${res.status}`);
+  const data = (await res.json()) as BCRAResponse;
+  const all  = [...(data.top10 ?? []), ...(data.otros ?? [])];
+  return all
     .map((r): PlazofijRate => ({
-      entidad:         ENTITY_NAMES[r.entidad] ?? r.entidad,
-      logo:            r.logo ? r.logo.replace("http://", "https://") : null,
-      tnaClientes:     Math.round(r.tnaClientes    * 10000) / 100,
-      tnaNoClientes:   Math.round(r.tnaNoClientes  * 10000) / 100,
-      tea:             tnaToTea(r.tnaClientes * 100),
-      enlace:          r.enlace    ?? null,
-      condicionesCorto: r.condicionesCorto ?? null,
+      entidad:          ENTITY_NAMES[r.entidad.trim()] ?? r.entidad.trim(),
+      logo:             r.logo_url ? r.logo_url.replace("http://", "https://") : null,
+      tnaClientes:      r.tasa_con_relacion,
+      tnaNoClientes:    r.tasa_sin_relacion,
+      tea:              tnaToTea(r.tasa_con_relacion),
+      enlace:           r.web || null,
+      condicionesCorto: null,
     }))
     .sort((a, b) => b.tnaClientes - a.tnaClientes);
 });
@@ -251,6 +308,11 @@ const FIN_SPREADS: FinSpread[] = [
 // TNA (% anual, capitalización diaria) → TEA (% anual)
 function tnaToTea(tna: number): number {
   return Math.round((Math.pow(1 + tna / 100 / 365, 365) - 1) * 1000) / 10;
+}
+
+// TEA (% anual) → TNA (% anual, capitalización diaria)
+function teaToTna(tea: number): number {
+  return Math.round((Math.pow(1 + tea / 100, 1 / 365) - 1) * 365 * 10000) / 100;
 }
 
 // ─── Fetcher genérico para variables del BCRA ────────────────────────────────

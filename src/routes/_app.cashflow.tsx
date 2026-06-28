@@ -643,7 +643,6 @@ function CashFlow() {
             <div className={`mt-3 text-2xl font-bold tracking-tight ${hasIncome ? "text-success" : "text-muted-foreground"}`}>
               {hasIncome ? fmtArs(projIngresos) : "—"}
             </div>
-            <div className="mt-1 text-xs text-muted-foreground">{RANGE_PERIOD[range]}</div>
 
             {incomesOpen && (
               <>
@@ -716,7 +715,6 @@ function CashFlow() {
             <div className="mt-3 text-2xl font-bold tracking-tight text-destructive">
               {projEgresos > 0 ? fmtArs(projEgresos) : "—"}
             </div>
-            <div className="mt-1 text-xs text-muted-foreground">{RANGE_PERIOD[range]}</div>
 
             {egresosOpen && (
               <>
@@ -837,7 +835,7 @@ function CashFlow() {
               {hasIncome ? `${positive ? "+" : "−"}${fmtArs(saldo)}` : "—"}
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
-              {hasIncome ? RANGE_PERIOD[range] : "Agregá ingresos para calcular el saldo"}
+              {hasIncome ? RANGE_PERIOD[range] : "Agregá tus ingresos y egresos para calcular el saldo"}
             </div>
           </Card>
   );
@@ -847,7 +845,6 @@ function CashFlow() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold">Proyección mensual</h3>
-          <p className="text-xs text-muted-foreground">Estimado mes a mes — editable, se guarda automáticamente</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={handleResetProjections}

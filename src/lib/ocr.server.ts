@@ -1,6 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
+import AIVisionClient from "@anthropic-ai/sdk";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const OCR_MODEL = "claude-sonnet-4-6";
+const client = new AIVisionClient({ apiKey: process.env.OCR_API_KEY });
 
 export type OcrResult = {
   emisor: string | null;
@@ -45,7 +46,7 @@ export async function extractFromDocument(base64: string, mediaType: string): Pr
     : { type: "image",    source: { type: "base64", media_type: mediaType,          data: base64 } };
 
   const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
+    model: OCR_MODEL,
     max_tokens: 256,
     messages: [{ role: "user", content: [fileBlock, { type: "text", text: PROMPT }] }],
   });

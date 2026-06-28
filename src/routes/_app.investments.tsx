@@ -19,6 +19,8 @@ const LOCAL_LOGOS: Record<string, string> = {
   "Banco Supervielle":          "/logos/supervielle.png",
   "Supervielle Hit IOL":        "/logos/supervielle.png",
   "Cresium":                    "/logos/cresium.png",
+  "Personal Pay":               "/logos/personal-pay.png",
+  "Banco Galicia":              "/logos/galicia.png",
 };
 
 // Logos via Google Favicon para el resto
@@ -33,6 +35,9 @@ const CR_LOGO_DOMAINS: Record<string, string> = {
   "Banco Nación":               "bna.com.ar",
   "Belo":                       "belo.app",
   "Montemar Pay":               "montemarpay.com.ar",
+  "Mercado Pago":               "mercadopago.com.ar",
+  "Lemon Cash":                 "lemon.me",
+  "Cocos":                      "cocos.capital",
 };
 
 function crLogoUrl(nombre: string): string | null {
@@ -90,7 +95,7 @@ const USD_TO_ARS = 1500;
 
 export const Route = createFileRoute("/_app/investments")({
   loader: async () => {
-    const [plazofijo, remuneradas, accounts, obligations] = await Promise.all([
+    const [plazofijo, { billeteras, fci }, accounts, obligations] = await Promise.all([
       getPlazofijo(),
       getCuentasRemuneradas(),
       getUserAccounts(),
@@ -103,7 +108,7 @@ export const Route = createFileRoute("/_app/investments")({
       .filter(o => new Date(o.fecha_vencimiento + "T12:00:00") <= today)
       .reduce((s, o) => s + parseFloat(o.monto), 0);
     const fondosOciosos = Math.max(0, Math.round(totalArs - totalVencidas));
-    return { plazofijo, remuneradas, defaultAmount: fondosOciosos };
+    return { plazofijo, billeteras, fci, defaultAmount: fondosOciosos };
   },
   component: Investments,
 });
@@ -121,43 +126,81 @@ function gainCr(amount: number, tea: number, days: number): number {
 const PLAZOS = [30, 60, 90, 180, 365];
 
 function Investments() {
-  const { plazofijo, remuneradas, defaultAmount } = Route.useLoaderData();
-  const [tab, setTab]                       = useState<"pf" | "cr">("pf");
-  const [amount, setAmount]                 = useState(() => {
+  const { plazofijo, billeteras, fci, defaultAmount } = Route.useLoaderData();
+  const [tab, setTab]                        = useState<"pf" | "cr" | "fci" | "all">("all");
+  const [amount, setAmount]                  = useState(() => {
     if (typeof window !== "undefined") {
       const stored = sessionStorage.getItem("primus_fondos_ociosos");
       if (stored !== null) return Number(stored);
     }
-
     return defaultAmount;
   });
-  const [inputStr, setInputStr]             = useState(() => amount.toLocaleString("es-AR", { maximumFractionDigits: 0 }));
-  const amountRef                           = useRef<HTMLInputElement>(null);
-  const [days, setDays]                     = useState(30);
-  const [showNoClientes, setShowNoClientes] = useState(false);
-  const [selectedPfIdx, setSelectedPfIdx]   = useState(0);
-  const [selectedCrIdx, setSelectedCrIdx]   = useState(0);
+  const [inputStr, setInputStr]              = useState(() => amount.toLocaleString("es-AR", { maximumFractionDigits: 0 }));
+  const amountRef                            = useRef<HTMLInputElement>(null);
+  const [days, setDays]                      = useState(30);
+  const [showNoClientes, setShowNoClientes]  = useState(false);
+  const [selectedPfIdx, setSelectedPfIdx]    = useState(0);
+  const [selectedCrIdx, setSelectedCrIdx]    = useState(0);
+  const [selectedFciIdx, setSelectedFciIdx]  = useState(0);
+  const [selectedAllIdx, setSelectedAllIdx]  = useState(0);
 
-  const pfSorted = [...plazofijo].sort((a, b) =>
+  const pfSorted  = [...plazofijo].sort((a, b) =>
     showNoClientes ? b.tnaNoClientes - a.tnaNoClientes : b.tnaClientes - a.tnaClientes,
   );
-  const crSorted = [...remuneradas];
+  const crSorted  = [...billeteras];
+  const fciSorted = [...fci];
+
+  type ConsolidadoItem = {
+    nombre: string;
+    tipo: "Plazo Fijo" | "Cuenta Remunerada" | "FCI";
+    tna: number;
+    tea: number;
+    logoSrc: string | null;
+  };
+  const consolidado: ConsolidadoItem[] = [
+    ...pfSorted.map(r => ({
+      nombre:  r.entidad,
+      tipo:    "Plazo Fijo" as const,
+      tna:     showNoClientes ? r.tnaNoClientes : r.tnaClientes,
+      tea:     r.tea,
+      logoSrc: PF_LOGO_OVERRIDES[r.entidad] ?? r.logo ?? null,
+    })),
+    ...crSorted.map(r => ({
+      nombre:  r.nombre,
+      tipo:    "Cuenta Remunerada" as const,
+      tna:     r.tna,
+      tea:     r.tea,
+      logoSrc: crLogoUrl(r.nombre),
+    })),
+    ...fciSorted.map(r => ({
+      nombre:  r.nombre,
+      tipo:    "FCI" as const,
+      tna:     r.tna,
+      tea:     r.tea,
+      logoSrc: crLogoUrl(r.nombre),
+    })),
+  ].sort((a, b) => b.tea - a.tea);
 
   // Al cambiar el toggle clientes/no-clientes, resetear selección al primero
   const handleToggleClientes = (noClientes: boolean) => {
     setShowNoClientes(noClientes);
     setSelectedPfIdx(0);
+    setSelectedAllIdx(0);
   };
 
   // Al cambiar de tab, resetear selección
-  const handleTabChange = (t: "pf" | "cr") => {
+  const handleTabChange = (t: "pf" | "cr" | "fci" | "all") => {
     setTab(t);
     setSelectedPfIdx(0);
     setSelectedCrIdx(0);
+    setSelectedFciIdx(0);
+    setSelectedAllIdx(0);
   };
 
-  const selPf = pfSorted[selectedPfIdx] as PlazofijRate | undefined;
-  const selCr = crSorted[selectedCrIdx] as CuentaRemunRate | undefined;
+  const selPf  = pfSorted[selectedPfIdx]     as PlazofijRate    | undefined;
+  const selCr  = crSorted[selectedCrIdx]     as CuentaRemunRate | undefined;
+  const selFci = fciSorted[selectedFciIdx]   as CuentaRemunRate | undefined;
+  const selAll = consolidado[selectedAllIdx] as ConsolidadoItem | undefined;
 
   return (
     <div className="space-y-6">
@@ -250,22 +293,59 @@ function Investments() {
               </div>
             </div>
           )}
+          {tab === "fci" && selFci && (
+            <div className="rounded-xl bg-[image:var(--gradient-primary)] p-4 text-primary-foreground shadow-[var(--shadow-glow)]">
+              <div className="text-xs opacity-90">{selFci.nombre} · Fondo Money Market {days} días</div>
+              <div className="mt-1 text-2xl font-bold tracking-tight">
+                + ARS {gainCr(amount, selFci.tea, days).toLocaleString("es-AR")}
+              </div>
+              <div className="text-xs opacity-90">
+                TNA {selFci.tna.toFixed(2)}% · TEA {selFci.tea.toFixed(1)}%
+              </div>
+            </div>
+          )}
+          {tab === "all" && selAll && (
+            <div className="rounded-xl bg-[image:var(--gradient-primary)] p-4 text-primary-foreground shadow-[var(--shadow-glow)]">
+              <div className="text-xs opacity-90">{selAll.nombre} · {selAll.tipo} · {days} días</div>
+              <div className="mt-1 text-2xl font-bold tracking-tight">
+                + ARS {(selAll.tipo === "Plazo Fijo"
+                  ? gainPf(amount, selAll.tna, days)
+                  : gainCr(amount, selAll.tea, days)
+                ).toLocaleString("es-AR")}
+              </div>
+              <div className="text-xs opacity-90">
+                TNA {selAll.tna.toFixed(2)}% · TEA {selAll.tea.toFixed(1)}%
+              </div>
+            </div>
+          )}
         </div>
       </Card>
 
       {/* Tabs */}
-      <div className="flex gap-1 w-fit rounded-xl border border-border bg-muted/40 p-1">
+      <div className="flex w-full gap-1 rounded-xl border border-border bg-muted/40 p-1">
+        <button
+          onClick={() => handleTabChange("all")}
+          className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${tab === "all" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          Consolidado
+        </button>
         <button
           onClick={() => handleTabChange("pf")}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === "pf" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${tab === "pf" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
         >
           Plazo Fijo
         </button>
         <button
           onClick={() => handleTabChange("cr")}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === "cr" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${tab === "cr" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
         >
           Cuentas Remuneradas
+        </button>
+        <button
+          onClick={() => handleTabChange("fci")}
+          className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${tab === "fci" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          Fondos Comunes de Inversión
         </button>
       </div>
 
@@ -274,9 +354,9 @@ function Investments() {
         <Card className="rounded-2xl border-border p-5 shadow-[var(--shadow-soft)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold">Ranking Plazo Fijo · TNA</h3>
+              <h3 className="text-base font-semibold">Ranking Plazo Fijo</h3>
               <p className="text-xs text-muted-foreground">
-                {pfSorted.length} entidades · datos en tiempo real
+                Entidades Bancarias · Acreditación Periódica
               </p>
             </div>
             <div className="flex items-center gap-1 rounded-xl border border-border bg-muted/40 p-1">
@@ -357,9 +437,9 @@ function Investments() {
         <Card className="rounded-2xl border-border p-5 shadow-[var(--shadow-soft)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold">Ranking Cuentas Remuneradas · TNA</h3>
+              <h3 className="text-base font-semibold">Ranking Cuentas Remuneradas</h3>
               <p className="text-xs text-muted-foreground">
-                {crSorted.length} productos · billeteras y bancos digitales · acreditación diaria
+                Billeteras Virtuales y Bancos Digitales · Acreditación Diaria
               </p>
             </div>
           </div>
@@ -417,6 +497,137 @@ function Investments() {
             <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <span>
               Esta información tiene carácter exclusivamente informativo y no constituye asesoramiento de inversión. Los rendimientos proyectados son estimativos y pueden variar. No todas las alternativas conllevan el mismo riesgo. Verificá siempre las condiciones con cada entidad antes de invertir. Primus no recibe comisión de ninguna entidad.
+            </span>
+          </div>
+        </Card>
+      )}
+
+      {/* ── TAB: Fondos Money Market ── */}
+      {tab === "fci" && (
+        <Card className="rounded-2xl border-border p-5 shadow-[var(--shadow-soft)]">
+          <div>
+            <h3 className="text-base font-semibold">Ranking Fondos Comunes de Inversión</h3>
+            <p className="text-xs text-muted-foreground">
+              Fondos Money Market · Liquidez Inmediata
+            </p>
+          </div>
+
+          <div className="mt-5 space-y-2.5">
+            {fciSorted.map((r, i) => {
+              const gain       = gainCr(amount, r.tea, days);
+              const isFirst    = i === 0;
+              const isSelected = i === selectedFciIdx;
+              return (
+                <button
+                  key={`${r.nombre}-${i}`}
+                  type="button"
+                  onClick={() => setSelectedFciIdx(i)}
+                  className={`w-full text-left flex flex-wrap items-center gap-3 rounded-xl border p-3.5 transition ${
+                    isSelected
+                      ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                      : "border-border bg-card hover:border-primary/40"
+                  }`}
+                >
+                  <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-bold ${
+                    isSelected
+                      ? "bg-[image:var(--gradient-primary)] text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  }`}>
+                    {isFirst ? <Trophy className="h-4 w-4" /> : `#${i + 1}`}
+                  </div>
+                  <EntityLogo src={crLogoUrl(r.nombre)} name={r.nombre} />
+                  <div className="min-w-[150px] flex-1">
+                    <div className="text-sm font-semibold">{r.nombre}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
+                    <div className="text-sm font-bold text-primary">{r.tna.toFixed(2)}%</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TEA</div>
+                    <div className="text-sm font-semibold">{r.tea.toFixed(1)}%</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{days === 365 ? "1 año" : `${days} días`}</div>
+                    <div className="text-sm font-bold text-success">+ARS {gain.toLocaleString("es-AR")}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 flex items-start gap-3 rounded-xl bg-muted/50 p-3 text-xs text-muted-foreground">
+            <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <span>
+              Los fondos money market invierten en instrumentos de corto plazo (plazos fijos, cauciones, letras). La TNA mostrada corresponde al rendimiento de los últimos 7 días anualizado y puede variar diariamente. Invertir en FCI implica riesgos. Verificá siempre las condiciones con cada sociedad gerente antes de invertir. Primus no recibe comisión de ninguna entidad.
+            </span>
+          </div>
+        </Card>
+      )}
+
+      {/* ── TAB: Consolidado ── */}
+      {tab === "all" && (
+        <Card className="rounded-2xl border-border p-5 shadow-[var(--shadow-soft)]">
+          <div>
+            <h3 className="text-base font-semibold">Ranking Consolidado</h3>
+            <p className="text-xs text-muted-foreground">
+              Plazo Fijo · Cuentas Remuneradas · FCI · ordenado de mayor a menor TEA
+            </p>
+          </div>
+
+          <div className="mt-5 space-y-2.5">
+            {consolidado.map((r, i) => {
+              const gain       = r.tipo === "Plazo Fijo" ? gainPf(amount, r.tna, days) : gainCr(amount, r.tea, days);
+              const isFirst    = i === 0;
+              const isSelected = i === selectedAllIdx;
+              const tipoBadgeClass =
+                r.tipo === "Plazo Fijo"        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
+                r.tipo === "Cuenta Remunerada" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" :
+                                                  "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300";
+              return (
+                <button
+                  key={`${r.nombre}-${r.tipo}-${i}`}
+                  type="button"
+                  onClick={() => setSelectedAllIdx(i)}
+                  className={`w-full text-left flex flex-wrap items-center gap-3 rounded-xl border p-3.5 transition ${
+                    isSelected
+                      ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                      : "border-border bg-card hover:border-primary/40"
+                  }`}
+                >
+                  <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-bold ${
+                    isSelected ? "bg-[image:var(--gradient-primary)] text-primary-foreground" : "bg-muted text-muted-foreground"
+                  }`}>
+                    {isFirst ? <Trophy className="h-4 w-4" /> : `#${i + 1}`}
+                  </div>
+                  <EntityLogo src={r.logoSrc} name={r.nombre} />
+                  <div className="min-w-[150px] flex-1">
+                    <div className="text-sm font-semibold">{r.nombre}</div>
+                    <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${tipoBadgeClass}`}>
+                      {r.tipo}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
+                    <div className="text-sm font-bold text-primary">{r.tna.toFixed(2)}%</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TEA</div>
+                    <div className="text-sm font-semibold">{r.tea.toFixed(1)}%</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{days === 365 ? "1 año" : `${days} días`}</div>
+                    <div className="text-sm font-bold text-success">+ARS {gain.toLocaleString("es-AR")}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 flex items-start gap-3 rounded-xl bg-muted/50 p-3 text-xs text-muted-foreground">
+            <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <span>
+              Vista unificada de las tres categorías de inversión ordenadas por TEA. Los plazos fijos usan interés simple; las cuentas remuneradas y FCI usan capitalización diaria. Esta información es exclusivamente informativa. Primus no recibe comisión de ninguna entidad.
             </span>
           </div>
         </Card>
