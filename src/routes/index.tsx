@@ -133,8 +133,8 @@ function Landing() {
               <div className="mt-5 grid grid-cols-3 gap-3 text-xs">
                 {[
                   { l: "Cuentas", v: "6", c: "text-primary" },
-                  { l: "Vencen", v: "3", c: "text-warning" },
-                  { l: "Ociosos", v: "ARS 420k", c: "text-success" },
+                  { l: "Próximos vencimientos", v: "$350.000,00", c: "text-warning" },
+                  { l: "Fondos ociosos", v: "ARS 420k", c: "text-success" },
                 ].map((s) => (
                   <div key={s.l} className="rounded-xl border border-border bg-muted/40 p-3">
                     <div className="text-muted-foreground">{s.l}</div>
