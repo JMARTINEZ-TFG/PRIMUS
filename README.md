@@ -1,4 +1,4 @@
-## Primus — Optimización Financiera Personal
+## Primus — Ecosistema Autónomo de Optimización Financiera
 
 Primus es una plataforma web de finanzas personales que centraliza, en un único tablero, la gestión de cuentas y obligaciones, la proyección de flujo de caja (cash flow), la comparación de opciones de financiación del mercado argentino y el seguimiento de alternativas de inversión.
 
