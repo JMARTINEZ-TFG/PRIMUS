@@ -28,7 +28,7 @@ const benefits = [
   {
     icon: Wallet,
     title: "Consolidación Automatizada",
-    desc: "Sincronizá bancos y billeteras virtuales vía Open Finance. Un solo saldo, todas tus disponibilidades.",
+    desc: "Sincronizá bancos y billeteras virtuales. Un solo saldo, todas tus disponibilidades.",
   },
   {
     icon: LineChart,
@@ -37,7 +37,7 @@ const benefits = [
   },
   {
     icon: ScanLine,
-    title: "Ingesta Documental OCR",
+    title: "Carga automática de obligaciones",
     desc: "Arrastrá una factura o resumen y nuestro motor extrae emisor, monto y vencimiento sin que muevas un dedo.",
   },
   {
