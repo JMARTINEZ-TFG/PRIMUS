@@ -61,11 +61,6 @@ function Landing() {
       <header className="sticky top-0 z-30 border-b border-border/60 bg-background/70 backdrop-blur-lg">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 md:px-6">
           <PrimusLogo />
-          <nav className="hidden items-center gap-8 text-sm font-medium text-muted-foreground md:flex">
-            <a href="#producto" className="transition hover:text-foreground">Producto</a>
-            <a href="#beneficios" className="transition hover:text-foreground">Beneficios</a>
-            <a href="#seguridad" className="transition hover:text-foreground">Seguridad</a>
-          </nav>
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" size="sm">
               <Link to="/login">Ingresar</Link>
@@ -219,11 +214,6 @@ function Landing() {
           <p className="text-xs text-muted-foreground">
             © {new Date().getFullYear()} Primus Labs. Ecosistema Autónomo de Optimización Financiera.
           </p>
-          <div className="flex gap-5 text-xs text-muted-foreground">
-            <a href="#" className="hover:text-foreground">Términos</a>
-            <a href="#" className="hover:text-foreground">Privacidad</a>
-            <a href="#" className="hover:text-foreground">Contacto</a>
-          </div>
         </div>
       </footer>
     </div>
