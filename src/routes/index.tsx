@@ -33,7 +33,7 @@ const benefits = [
   {
     icon: LineChart,
     title: "Cash Flow Inteligente",
-    desc: "Proyectamos tu liquidez a 7, 14 y 30 días. Anticipá déficits y superávits antes de que ocurran.",
+    desc: "Proyectamos tu liquidez a 30, 90, 180 y 365 días. Anticipá déficits y superávits antes de que ocurran.",
   },
   {
     icon: ScanLine,

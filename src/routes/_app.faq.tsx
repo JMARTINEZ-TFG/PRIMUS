@@ -152,7 +152,7 @@ Cash Flow = Ingresos − Gastos
 
 Si tus ingresos del mes son $500.000 y tus gastos totales son $420.000, tu flujo de caja es positivo en $80.000. Si es negativo, estás gastando más de lo que ingresás.
 
-Primus proyecta tu Cash Flow a 7, 14 y 30 días considerando tus obligaciones registradas, para que puedas anticiparte a períodos de escasez antes de que ocurran.`,
+Primus proyecta tu Cash Flow a 30, 90, 180 y 365 días considerando tus obligaciones registradas, para que puedas anticiparte a períodos de escasez antes de que ocurran.`,
       },
       {
         q: "¿Qué es la liquidez?",
