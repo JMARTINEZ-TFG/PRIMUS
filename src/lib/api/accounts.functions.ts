@@ -133,7 +133,7 @@ async function importAccounts(
          (id_usuario, id_entidad, tipo_cuenta, saldo_actual, moneda, ultima_sincronizacion,
           ultimos_digitos, prometeo_provider, prometeo_account_id, prometeo_session_key)
        VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7, $8, $9)
-       ON CONFLICT (prometeo_account_id) WHERE prometeo_account_id IS NOT NULL DO UPDATE
+       ON CONFLICT (id_usuario, prometeo_account_id) WHERE prometeo_account_id IS NOT NULL DO UPDATE
          SET saldo_actual         = EXCLUDED.saldo_actual,
              ultima_sincronizacion = NOW(),
              prometeo_session_key  = EXCLUDED.prometeo_session_key
