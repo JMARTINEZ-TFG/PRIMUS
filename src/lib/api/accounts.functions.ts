@@ -14,6 +14,8 @@ export type Account = {
   moneda: string;
   ultima_sincronizacion: string | null;
   ultimos_digitos: string | null;
+  prometeo_provider: string | null;
+  sesion_vencida: boolean;
 };
 
 export const getUserAccounts = createServerFn({ method: "GET" }).handler(async () => {
@@ -30,7 +32,9 @@ export const getUserAccounts = createServerFn({ method: "GET" }).handler(async (
        c.saldo_actual::text,
        c.moneda,
        c.ultima_sincronizacion::text,
-       c.ultimos_digitos
+       c.ultimos_digitos,
+       c.prometeo_provider,
+       (c.prometeo_session_key IS NULL) AS sesion_vencida
      FROM cuenta c
      JOIN entidad_financiera ef ON ef.id_entidad = c.id_entidad
      WHERE c.id_usuario = $1
@@ -234,7 +238,7 @@ export const syncAccounts = createServerFn({ method: "POST" }).handler(async () 
   let synced = 0;
 
   const sessions = new Map<string, typeof rows>();
-  const fallback: typeof rows = [];
+  const expired: typeof rows = [];
 
   for (const acc of rows) {
     if (acc.prometeo_session_key && acc.prometeo_account_id) {
@@ -242,7 +246,7 @@ export const syncAccounts = createServerFn({ method: "POST" }).handler(async () 
       group.push(acc);
       sessions.set(acc.prometeo_session_key, group);
     } else {
-      fallback.push(acc);
+      expired.push(acc);
     }
   }
 
@@ -273,29 +277,19 @@ export const syncAccounts = createServerFn({ method: "POST" }).handler(async () 
         synced++;
       }
     } catch {
-      // Sesión expirada → tratar como fallback
-      fallback.push(...accs);
+      // Sesión expirada → el usuario debe volver a vincular la cuenta
+      expired.push(...accs);
     }
   }
 
-  // Fallback: fluctuación simulada ±2%
-  for (const acc of fallback) {
-    const current = parseFloat(acc.saldo_actual);
-    const pct = (Math.random() * 4 - 2) / 100;
-    const delta = Math.round(current * pct * 100) / 100;
-    const newSaldo = Math.round((current + delta) * 100) / 100;
-    if (Math.abs(delta) >= 0.01) {
-      await db.query(
-        "INSERT INTO transaccion (id_cuenta, fecha, monto, descripcion) VALUES ($1, $2, $3, 'Actualización automática')",
-        [acc.id_cuenta, now, delta],
-      );
-    }
+  // Sesión vencida: se conserva el último saldo conocido y se descarta la clave
+  // para que la cuenta quede marcada hasta que el usuario la vuelva a vincular.
+  if (expired.length > 0) {
     await db.query(
-      "UPDATE cuenta SET saldo_actual = $1, ultima_sincronizacion = $2 WHERE id_cuenta = $3",
-      [newSaldo, now, acc.id_cuenta],
+      "UPDATE cuenta SET prometeo_session_key = NULL WHERE id_cuenta = ANY($1::int[])",
+      [expired.map((a) => a.id_cuenta)],
     );
-    synced++;
   }
 
-  return { synced, syncedAt: now.toISOString() };
+  return { synced, expired: expired.length, syncedAt: now.toISOString() };
 });

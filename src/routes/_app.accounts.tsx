@@ -1,7 +1,7 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import {
-  Plus, Wifi, WifiOff, Building2, Smartphone, RefreshCw, Trash2,
+  Plus, Wifi, WifiOff, Building2, Smartphone, RefreshCw, Trash2, KeyRound,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -119,7 +119,15 @@ function Accounts() {
   const [otpField, setOtpField] = useState("otp");
   const [pendingKey, setPendingKey] = useState("");
 
-  const staleAccounts = accounts.filter((a) => isStale(a.ultima_sincronizacion));
+  const expiredAccounts = accounts.filter((a) => a.sesion_vencida);
+  const staleAccounts = accounts.filter((a) => !a.sesion_vencida && isStale(a.ultima_sincronizacion));
+
+  const openRelink = (a: Account) => {
+    const provider =
+      a.prometeo_provider ?? PROVIDERS.find((p) => p.label === a.nombre_entidad)?.value ?? "";
+    setSelectedProvider(provider);
+    setLinkOpen(true);
+  };
 
   const resetLinkForm = () => {
     setLinkStep("credentials");
@@ -185,7 +193,16 @@ function Accounts() {
     try {
       const result = await syncAccounts();
       await router.invalidate();
-      toast.success(`${result.synced} ${result.synced === 1 ? "cuenta sincronizada" : "cuentas sincronizadas"} correctamente.`);
+      if (result.synced > 0) {
+        toast.success(`${result.synced} ${result.synced === 1 ? "cuenta sincronizada" : "cuentas sincronizadas"} correctamente.`);
+      }
+      if (result.expired > 0) {
+        toast.warning(
+          result.expired === 1
+            ? "Sesión vencida en 1 cuenta. Volvé a vincularla para actualizar el saldo."
+            : `Sesión vencida en ${result.expired} cuentas. Volvé a vincularlas para actualizar el saldo.`,
+        );
+      }
     } catch {
       toast.error("No se pudo sincronizar. Reintentá en unos segundos.");
     } finally {
@@ -238,6 +255,28 @@ function Accounts() {
         </div>
       </div>
 
+      {/* Alerta de sesiones vencidas */}
+      {expiredAccounts.length > 0 && (
+        <div className="flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4">
+          <KeyRound className="mt-0.5 h-5 w-5 text-destructive" />
+          <div className="flex-1">
+            <div className="text-sm font-semibold">
+              {expiredAccounts.length === 1
+                ? `Sesión vencida con ${expiredAccounts[0].nombre_entidad}`
+                : `Sesión vencida en ${expiredAccounts.length} cuentas`}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Se muestra el último saldo conocido. Volvé a vincular para actualizarlo.
+            </p>
+          </div>
+          {expiredAccounts.length === 1 && (
+            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => openRelink(expiredAccounts[0])}>
+              Volver a vincular
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Alerta de cuentas desactualizadas */}
       {staleAccounts.length > 0 && (
         <div className="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning/10 p-4">
@@ -277,6 +316,7 @@ function Accounts() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {accounts.map((a) => {
             const Icon = entityIcon(a.tipo_entidad);
+            const expired = a.sesion_vencida;
             const stale = isStale(a.ultima_sincronizacion);
             const negative = parseFloat(a.saldo_actual) < 0;
 
@@ -297,7 +337,11 @@ function Accounts() {
                       </div>
                     </div>
                   </div>
-                  {stale ? (
+                  {expired ? (
+                    <Badge variant="secondary" className="gap-1 rounded-full bg-destructive/10 text-destructive">
+                      <KeyRound className="h-3 w-3" /> Sesión vencida
+                    </Badge>
+                  ) : stale ? (
                     <Badge variant="secondary" className="gap-1 rounded-full bg-warning/15 text-warning">
                       <WifiOff className="h-3 w-3" /> Caché
                     </Badge>
@@ -316,7 +360,16 @@ function Accounts() {
                 </div>
 
                 <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
-                  <span>Sincronizado {timeSince(a.ultima_sincronizacion)}</span>
+                  {expired ? (
+                    <button
+                      onClick={() => openRelink(a)}
+                      className="font-medium text-destructive transition hover:underline"
+                    >
+                      Sesión vencida, volvé a vincular
+                    </button>
+                  ) : (
+                    <span>Sincronizado {timeSince(a.ultima_sincronizacion)}</span>
+                  )}
                   <button
                     onClick={() => setUnlinkTarget(a)}
                     className="text-destructive/70 transition hover:text-destructive"
