@@ -115,7 +115,7 @@ function Landing() {
                 <CheckCircle2 className="h-4 w-4 text-success" /> Setup en 2 minutos
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-success" /> Datos cifrados E2E
+                <CheckCircle2 className="h-4 w-4 text-success" /> Conexión cifrada (HTTPS)
               </span>
             </div>
           </div>
@@ -215,7 +215,7 @@ function Landing() {
           <div className="grid items-center gap-8 md:grid-cols-[1fr_auto]">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium">
-                <ShieldCheck className="h-3.5 w-3.5" /> Open Finance + cifrado E2E
+                <ShieldCheck className="h-3.5 w-3.5" /> Open Finance + conexión cifrada
               </div>
               <h2 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl">
                 Listo para empezar a optimizar?
