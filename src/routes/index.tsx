@@ -15,10 +15,18 @@ import { Button } from "@/components/ui/button";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Primus — Ecosistema Autónomo de Optimización Financiera" },
-      { name: "description", content: "Consolidá saldos, automatizá facturas con OCR, proyectá tu cash flow y compará inversiones y créditos del mercado en un solo tablero." },
+      { title: "Primus — Ecosistema de Consolidación y Optimización Financiera" },
+      {
+        name: "description",
+        content:
+          "Consolidá saldos, automatizá facturas con OCR, proyectá tu cash flow y compará inversiones y créditos del mercado en un solo tablero.",
+      },
       { property: "og:title", content: "Primus — Tu Ecosistema financiero personal" },
-      { property: "og:description", content: "Transformá datos atomizados en un tablero unificado. Automatización inteligente para tus finanzas personales." },
+      {
+        property: "og:description",
+        content:
+          "Transformá datos atomizados en un tablero unificado. Automatización inteligente para tus finanzas personales.",
+      },
     ],
   }),
   component: Landing,
@@ -77,7 +85,7 @@ function Landing() {
         <div className="grid items-center gap-12 lg:grid-cols-2">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
-              <Zap className="h-3.5 w-3.5" /> Ecosistema autónomo de finanzas personales
+              <Zap className="h-3.5 w-3.5" /> Ecosistema de Consolidación y Optimización Financiera
             </span>
             <h1 className="mt-5 text-4xl font-bold leading-[1.05] tracking-tight md:text-6xl">
               Tus finanzas,{" "}
@@ -100,9 +108,15 @@ function Landing() {
               </Button>
             </div>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-success" /> Sin tarjeta de crédito</span>
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-success" /> Setup en 2 minutos</span>
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-success" /> Datos cifrados E2E</span>
+              <span className="inline-flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 text-success" /> Sin tarjeta de crédito
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 text-success" /> Setup en 2 minutos
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 text-success" /> Datos cifrados E2E
+              </span>
             </div>
           </div>
 
@@ -112,7 +126,9 @@ function Landing() {
             <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Saldo Consolidado Total</span>
-                <span className="rounded-full bg-success/10 px-2 py-0.5 text-success">SALUDABLE</span>
+                <span className="rounded-full bg-success/10 px-2 py-0.5 text-success">
+                  SALUDABLE
+                </span>
               </div>
               <div className="mt-2 flex items-baseline gap-2">
                 <span className="text-3xl font-bold tracking-tight">ARS 2.847.320</span>
@@ -120,8 +136,16 @@ function Landing() {
               </div>
               <div className="mt-5 h-32 w-full rounded-xl bg-gradient-to-b from-primary/15 to-transparent">
                 <svg viewBox="0 0 300 100" className="h-full w-full">
-                  <path d="M0,80 C40,60 60,70 90,50 C120,30 140,45 170,35 C200,25 230,40 270,15 L300,10 L300,100 L0,100 Z" fill="url(#g)" />
-                  <path d="M0,80 C40,60 60,70 90,50 C120,30 140,45 170,35 C200,25 230,40 270,15 L300,10" fill="none" stroke="oklch(0.55 0.22 255)" strokeWidth="2" />
+                  <path
+                    d="M0,80 C40,60 60,70 90,50 C120,30 140,45 170,35 C200,25 230,40 270,15 L300,10 L300,100 L0,100 Z"
+                    fill="url(#g)"
+                  />
+                  <path
+                    d="M0,80 C40,60 60,70 90,50 C120,30 140,45 170,35 C200,25 230,40 270,15 L300,10"
+                    fill="none"
+                    stroke="oklch(0.55 0.22 255)"
+                    strokeWidth="2"
+                  />
                   <defs>
                     <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="oklch(0.55 0.22 255)" stopOpacity="0.3" />
@@ -151,7 +175,9 @@ function Landing() {
           {stats.map((s) => (
             <div key={s.l}>
               <div className="text-2xl font-bold tracking-tight md:text-3xl">{s.v}</div>
-              <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">{s.l}</div>
+              <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">
+                {s.l}
+              </div>
             </div>
           ))}
         </div>
@@ -212,7 +238,8 @@ function Landing() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 md:flex-row md:px-6">
           <PrimusLogo />
           <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} Primus Labs. Ecosistema Autónomo de Optimización Financiera.
+            © {new Date().getFullYear()} Primus Labs. Ecosistema de Consolidación y Optimización
+            Financiera.
           </p>
         </div>
       </footer>

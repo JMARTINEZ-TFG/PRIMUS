@@ -76,14 +76,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Primus — Ecosistema Autónomo de Optimización Financiera" },
-      { name: "description", content: "Consolidá cuentas, automatizá facturas con OCR, proyectá tu cash flow y compará inversiones y créditos del mercado en un solo tablero." },
+      { title: "Primus — Ecosistema de Consolidación y Optimización Financiera" },
+      {
+        name: "description",
+        content:
+          "Consolidá cuentas, automatizá facturas con OCR, proyectá tu cash flow y compará inversiones y créditos del mercado en un solo tablero.",
+      },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap",
+      },
     ],
   }),
   shellComponent: RootShell,

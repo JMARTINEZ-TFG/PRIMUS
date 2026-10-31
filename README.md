@@ -1,4 +1,4 @@
-## Primus — Ecosistema Autónomo de Optimización Financiera
+## Primus — Ecosistema de Consolidación y Optimización Financiera
 
 Primus es una plataforma web de finanzas personales que centraliza, en un único tablero, la gestión de cuentas y obligaciones, la proyección de flujo de caja (cash flow), la comparación de opciones de financiación del mercado argentino y el seguimiento de alternativas de inversión.
 
@@ -16,8 +16,8 @@ Primus es una plataforma web de finanzas personales que centraliza, en un único
 
 A fin de acceder a la plataforma, se proporciona el siguiente usuario de prueba (previamente verificado):
 
-| Usuario | Contraseña |
-| ------- | ---------- |
+| Usuario         | Contraseña  |
+| --------------- | ----------- |
 | `test@test.com` | `Test1234!` |
 
 > 💡 En un despliegue productivo esta limitación se elimina **verificando un dominio propio en Resend** y configurando el remitente (`from`) con una dirección de ese dominio, lo que habilita el envío a cualquier destinatario.
