@@ -90,7 +90,7 @@ function Landing() {
             <h1 className="mt-5 text-4xl font-bold leading-[1.05] tracking-tight md:text-6xl">
               Tus finanzas,{" "}
               <span className="bg-[image:var(--gradient-primary)] bg-clip-text text-transparent">
-                en piloto automático.
+                en un solo lugar.
               </span>
             </h1>
             <p className="mt-5 max-w-xl text-lg text-muted-foreground">
