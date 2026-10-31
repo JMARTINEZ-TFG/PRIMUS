@@ -90,18 +90,18 @@ import {
 } from "@/lib/api/rates.functions";
 import { getUserAccounts } from "@/lib/api/accounts.functions";
 import { getObligations } from "@/lib/api/obligations.functions";
-
-const USD_TO_ARS = 1500;
+import { getTipoCambio } from "@/lib/api/fx.functions";
 
 export const Route = createFileRoute("/_app/investments")({
   loader: async () => {
-    const [plazofijo, { billeteras, fci }, accounts, obligations] = await Promise.all([
+    const [plazofijo, { billeteras, fci }, accounts, obligations, tipoCambio] = await Promise.all([
       getPlazofijo(),
       getCuentasRemuneradas(),
       getUserAccounts(),
       getObligations(),
+      getTipoCambio(),
     ]);
-    const totalArs = accounts.reduce((s, a) => s + parseFloat(a.saldo_actual) * (a.moneda === "USD" ? USD_TO_ARS : 1), 0);
+    const totalArs = accounts.reduce((s, a) => s + parseFloat(a.saldo_actual) * (a.moneda === "USD" ? tipoCambio.valor : 1), 0);
     const today = new Date();
     const totalVencidas = obligations
       .filter(o => !o.pagado)

@@ -1,6 +1,7 @@
-// Datos de tasas de préstamos personales — actualizado junio 2026
-// Fuente: BCRA Régimen de Transparencia · PERSONALES.CSV
-// Se usa el producto más representativo (mejor tasa disponible) de cada entidad.
+// Datos de RESPALDO de préstamos personales — junio 2026.
+// Solo se usan si la API de Transparencia del BCRA no responde y todavía no hay
+// datos en caché (ver loans.functions.ts).
+// Fuente: BCRA Régimen de Transparencia.
 // TNA derivada de: TNA = 12 × ((1 + TEA/100)^(1/12) − 1) × 100
 // CFT publicado por el BCRA: incluye TNA + sellos, seguro de vida e ITF según jurisdicción.
 
@@ -8,7 +9,7 @@ export type LoanProduct = {
   id: string;
   entidad: string;
   tipo: "pesos" | "uva";
-  tna: number;       // % TNA anual (para UVA: tasa real sobre índice CER)
+  tna: number;       // % TNA anual
   tea: number;       // % TEA anual
   cft: number;       // % CFT anual (Costo Financiero Total)
   plazoMax: number;  // meses
@@ -16,6 +17,7 @@ export type LoanProduct = {
   montoMax: number;  // ARS
   limiteVariable?: boolean;
   condiciones?: string;
+  fecha?: string;    // YYYY-MM-DD en que la entidad informó el producto al BCRA
 };
 
 // Ordenados de menor a mayor CFT — fuente BCRA junio 2026
@@ -113,55 +115,5 @@ export const PESOS_PRODUCTS: LoanProduct[] = [
     tna: 166.0, tea: 391.0, cft: 569.0,
     plazoMax: 24, montoMin: 5_000, montoMax: 14_000_000,
     limiteVariable: true,
-  },
-];
-
-// Tasas UVA: tasa real aplicada sobre el capital ajustado por CER (inflación).
-// Galicia y Banco Provincia: fuente BCRA PERSONALES.CSV junio 2026.
-// Resto: estimaciones de mercado — no figuran como préstamos personales UVA en el CSV.
-export const UVA_PRODUCTS: LoanProduct[] = [
-  {
-    id: "bna-uva",
-    entidad: "Banco Nación",
-    tipo: "uva",
-    tna: 5.0, tea: 5.1, cft: 7.8,
-    plazoMax: 48, montoMin: 100_000, montoMax: 5_000_000,
-    condiciones: "Acreditar haberes en BNA",
-  },
-  {
-    id: "bapro-uva",
-    entidad: "Banco Provincia",
-    tipo: "uva",
-    tna: 25.4, tea: 28.1, cft: 28.1,
-    plazoMax: 24, montoMin: 100_000, montoMax: 50_000_000,
-    condiciones: "Acreditación de haberes",
-  },
-  {
-    id: "ciudad-uva",
-    entidad: "Banco Ciudad",
-    tipo: "uva",
-    tna: 6.5, tea: 6.7, cft: 9.9,
-    plazoMax: 36, montoMin: 50_000, montoMax: 3_000_000,
-  },
-  {
-    id: "galicia-uva",
-    entidad: "Banco Galicia",
-    tipo: "uva",
-    tna: 26.5, tea: 30.0, cft: 37.0,
-    plazoMax: 24, montoMin: 500, montoMax: 2_000_000,
-  },
-  {
-    id: "santander-uva",
-    entidad: "Santander",
-    tipo: "uva",
-    tna: 8.5, tea: 8.8, cft: 12.9,
-    plazoMax: 36, montoMin: 100_000, montoMax: 4_000_000,
-  },
-  {
-    id: "bbva-uva",
-    entidad: "BBVA",
-    tipo: "uva",
-    tna: 9.0, tea: 9.4, cft: 13.8,
-    plazoMax: 36, montoMin: 100_000, montoMax: 3_500_000,
   },
 ];

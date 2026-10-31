@@ -8,24 +8,24 @@ import { getLoanProducts } from "@/lib/api/loans.functions";
 import type { LoanProduct } from "@/lib/api/loans-data";
 import { getUserAccounts } from "@/lib/api/accounts.functions";
 import { getObligations } from "@/lib/api/obligations.functions";
-
-const USD_TO_ARS = 1500;
+import { getTipoCambio } from "@/lib/api/fx.functions";
 
 export const Route = createFileRoute("/_app/loans")({
   loader: async () => {
-    const [{ pesos, uva }, accounts, obligations] = await Promise.all([
+    const [{ pesos, fuente }, accounts, obligations, tipoCambio] = await Promise.all([
       getLoanProducts(),
       getUserAccounts(),
       getObligations(),
+      getTipoCambio(),
     ]);
-    const totalArs = accounts.reduce((s, a) => s + parseFloat(a.saldo_actual) * (a.moneda === "USD" ? USD_TO_ARS : 1), 0);
+    const totalArs = accounts.reduce((s, a) => s + parseFloat(a.saldo_actual) * (a.moneda === "USD" ? tipoCambio.valor : 1), 0);
     const today = new Date();
     const totalVencidas = obligations
       .filter(o => !o.pagado)
       .filter(o => new Date(o.fecha_vencimiento + "T12:00:00") <= today)
       .reduce((s, o) => s + parseFloat(o.monto), 0);
     const insolvencia = Math.max(0, Math.round(totalVencidas - totalArs));
-    return { pesos, uva, defaultAmount: insolvencia };
+    return { pesos, fuente, defaultAmount: insolvencia };
   },
   component: Loans,
 });
@@ -98,6 +98,10 @@ function fmtArs(n: number): string {
   return n.toLocaleString("es-AR", { maximumFractionDigits: 0 });
 }
 
+function fmtFecha(iso: string): string {
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+}
+
 function fmtPlazo(p: number): string {
   return p % 12 === 0 ? `${p / 12}a` : `${p}m`;
 }
@@ -109,7 +113,7 @@ const PLAZOS = [6, 12, 24, 36, 48, 60, 72];
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 function Loans() {
-  const { pesos, defaultAmount } = Route.useLoaderData();
+  const { pesos, fuente, defaultAmount } = Route.useLoaderData();
   const [amount, setAmount]           = useState(() => {
     if (typeof window !== "undefined") {
       const stored = sessionStorage.getItem("primus_insolvencia");
@@ -234,7 +238,10 @@ function Loans() {
         <div>
           <h3 className="text-base font-semibold">Ranking Oferta Crediticia</h3>
           <p className="text-xs text-muted-foreground">
-            Principales oferentes · ordenado de menor a mayor CFT
+            Principales oferentes · ordenado de menor a mayor CFT ·{" "}
+            {fuente === "BCRA"
+              ? "Fuente: BCRA, Régimen de Transparencia (actualización automática)"
+              : "Datos de respaldo (junio 2026): el BCRA no respondió"}
           </p>
         </div>
 
@@ -272,7 +279,11 @@ function Loans() {
                   <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1">
                     {r.limiteVariable
                       ? "límite variable"
-                      : [r.condiciones, `hasta ARS ${fmtArs(r.montoMax)}`].filter(Boolean).join(" · ")}
+                      : [
+                          r.condiciones,
+                          `hasta ARS ${fmtArs(r.montoMax)}`,
+                          r.fecha && `informado ${fmtFecha(r.fecha)}`,
+                        ].filter(Boolean).join(" · ")}
                   </div>
                 </div>
                 <div className="text-right">

@@ -1,48 +1,31 @@
 import { createServerFn } from "@tanstack/react-start";
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { PESOS_PRODUCTS, UVA_PRODUCTS, type LoanProduct } from "./loans-data";
+import { PESOS_PRODUCTS, type LoanProduct } from "./loans-data";
 
-// ─── Parser formato propio (id;entidad;tipo;tna;tea;cft;...) ─────────────────
+// ─── BCRA — Régimen de Transparencia: Préstamos Personales ───────────────────
+// API oficial: https://api.bcra.gob.ar/transparencia/v1.0/Prestamos/Personales
+// Cada entidad informa sus productos con su propia fecha (fechaInformacion).
 
-function parseCustomFormat(text: string): LoanProduct[] {
-  const lines = text
-    .split(/\r?\n/)
-    .map(l => l.trim())
-    .filter(l => l && !l.startsWith("#"));
-  if (lines.length < 2) return [];
+const BCRA_URL = "https://api.bcra.gob.ar/transparencia/v1.0/Prestamos/Personales";
+const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 
-  return lines.slice(1).flatMap(line => {
-    const cols = line.split(";");
-    const [id, entidad, tipo, tna, tea, cft, plazoMax, montoMin, montoMax, limiteVariable, ...condParts] = cols;
-    const condiciones = condParts.join(";").trim() || undefined;
-    const product: LoanProduct = {
-      id:             id.trim(),
-      entidad:        entidad.trim(),
-      tipo:           tipo.trim() as "pesos" | "uva",
-      tna:            parseFloat(tna),
-      tea:            parseFloat(tea),
-      cft:            parseFloat(cft),
-      plazoMax:       parseInt(plazoMax, 10),
-      montoMin:       parseInt(montoMin, 10),
-      montoMax:       parseInt(montoMax, 10),
-      limiteVariable: limiteVariable?.trim() === "true" || undefined,
-      condiciones,
-    };
-    return isNaN(product.tna) ? [] : [product];
-  });
-}
-
-// ─── Parser formato BCRA ──────────────────────────────────────────────────────
-// Columnas: 0=código, 1=Descripción de Entidad, 2=Fecha, 3=Nombre completo,
-//           4=Nombre corto, 5=Denominación, 6=montoMax, 7=montoMin,
-//           8=plazoMax, 15=TEA, 17=CFT
+type BcraPrestamo = {
+  codigoEntidad: number;
+  descripcionEntidad: string;
+  fechaInformacion: string;
+  nombreCorto: string;
+  denominacion: string | null;
+  montoMinimoOtorgable: number;
+  montoMaximoOtorgable: number;
+  plazoMaximoOtorgable: number;
+  tasaEfectivaAnualMaxima: number;
+  costoFinancieroEfectivoTotalMaximo: number;
+};
 
 type AllowedProduct = {
-  entityPrefix: string; // inicio del campo "Descripción de Entidad" en mayúsculas
-  shortName: string;    // campo "Nombre corto del Préstamo Personal" exacto en mayúsculas
-  display: string;      // nombre de display en la UI
-  id: string;           // slug para el campo id
+  entityPrefix: string;      // inicio de "descripcionEntidad" en mayúsculas
+  shortName: string | null;  // "nombreCorto" exacto en mayúsculas; null = cualquier producto de la entidad
+  display: string;           // nombre de display en la UI
+  id: string;                // slug para el campo id
 };
 
 // Lista exacta de los productos a mostrar, identificados por entidad + nombre corto.
@@ -58,9 +41,10 @@ const ALLOWED_PRODUCTS: AllowedProduct[] = [
   { entityPrefix: "BANCO PATAGONIA",                       shortName: "PP PLUS",                  display: "Banco Patagonia",   id: "patagonia"  },
   { entityPrefix: "BANCO SUPERVIELLE",                     shortName: "PP",                       display: "Banco Supervielle", id: "supervielle"},
   { entityPrefix: "BANCO BBVA ARGENTINA",                  shortName: "PRESTAMO PERSONAL",        display: "BBVA",              id: "bbva"       },
-  { entityPrefix: "BANCO DE GALICIA Y BUENOS AIRES",       shortName: "PP",                       display: "Banco Galicia",     id: "galicia"    },
+  // Galicia informa varias variantes (PPMINPLUS, PPMAXEMINENT, …): se toma la de menor CFT
+  { entityPrefix: "BANCO DE GALICIA Y BUENOS AIRES",       shortName: null,                       display: "Banco Galicia",     id: "galicia"    },
   { entityPrefix: "NARANJA DIGITAL",                       shortName: "PRESTAMOS PERSONALES",     display: "Naranja X",         id: "naranjax"   },
-  { entityPrefix: "UALA BANK",                             shortName: "PRESTAMOS",                display: "Ualá",              id: "uala"       },
+  { entityPrefix: "UALA BANK",                             shortName: "PRESTAMOS PERSONALES",     display: "Ualá",              id: "uala"       },
   { entityPrefix: "MERCADOLIBRE",                          shortName: "PRESTAMO PERSONAL",        display: "Mercado Pago",      id: "mercadopago"},
   { entityPrefix: "BRUBANK",                               shortName: "PP RIESGO MEDIO BAJO",     display: "Brubank",           id: "brubank"    },
 ];
@@ -69,19 +53,9 @@ function findProduct(entityName: string, shortName: string): AllowedProduct | nu
   const upperEntity = entityName.trim().toUpperCase();
   const upperShort  = shortName.trim().toUpperCase();
   for (const p of ALLOWED_PRODUCTS) {
-    if (upperEntity.startsWith(p.entityPrefix) && upperShort === p.shortName) return p;
+    if (upperEntity.startsWith(p.entityPrefix) && (p.shortName === null || upperShort === p.shortName)) return p;
   }
   return null;
-}
-
-function parseBcraFloat(s: string): number {
-  const n = parseFloat((s ?? "").trim().replace(",", "."));
-  return isNaN(n) ? 0 : n;
-}
-
-function parseBcraInt(s: string): number {
-  const n = parseInt((s ?? "").trim(), 10);
-  return isNaN(n) ? 0 : n;
 }
 
 function teaToTna(tea: number): number {
@@ -89,80 +63,72 @@ function teaToTna(tea: number): number {
   return Math.round(12 * (Math.pow(1 + tea / 100, 1 / 12) - 1) * 1000) / 10;
 }
 
-function parseBcraFormat(text: string): LoanProduct[] {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return [];
+function toLoanProducts(rows: BcraPrestamo[]): LoanProduct[] {
+  type Row = { product: AllowedProduct; r: BcraPrestamo };
 
-  type Row = { product: AllowedProduct; montoMax: number; montoMin: number; plazoMax: number; tea: number; cft: number };
-
-  const rows: Row[] = lines.slice(1).flatMap(line => {
-    const c = line.split(";");
-    if ((c[5] ?? "").trim() !== "Pesos") return [];
-
-    const product = findProduct(c[1] ?? "", c[4] ?? "");
+  const matches: Row[] = rows.flatMap((r) => {
+    if (r.denominacion !== "Pesos") return [];
+    const product = findProduct(r.descripcionEntidad ?? "", r.nombreCorto ?? "");
     if (!product) return [];
-
-    const tea = parseBcraFloat(c[15] ?? "");
-    const cft = parseBcraFloat(c[17] ?? "");
-    if (tea <= 0 || cft <= 0) return [];
-
-    return [{ product, montoMax: parseBcraInt(c[6]), montoMin: parseBcraInt(c[7]), plazoMax: parseBcraInt(c[8]), tea, cft }];
+    if (!(r.tasaEfectivaAnualMaxima > 0) || !(r.costoFinancieroEfectivoTotalMaximo > 0)) return [];
+    return [{ product, r }];
   });
 
   // Por cada producto, quedarse con la fila de menor CFT
   const groups = new Map<string, Row>();
-  for (const r of rows) {
-    const ex = groups.get(r.product.id);
-    if (!ex || r.cft < ex.cft) groups.set(r.product.id, r);
+  for (const m of matches) {
+    const ex = groups.get(m.product.id);
+    if (!ex || m.r.costoFinancieroEfectivoTotalMaximo < ex.r.costoFinancieroEfectivoTotalMaximo) {
+      groups.set(m.product.id, m);
+    }
   }
 
-  return Array.from(groups.values()).map(r => ({
-    id:       `${r.product.id}-pesos`,
-    entidad:  r.product.display,
+  return Array.from(groups.values()).map(({ product, r }) => ({
+    id:       `${product.id}-pesos`,
+    entidad:  product.display,
     tipo:     "pesos" as const,
-    tna:      teaToTna(r.tea),
-    tea:      r.tea,
-    cft:      r.cft,
-    plazoMax: r.plazoMax,
-    montoMin: r.montoMin,
-    montoMax: r.montoMax,
+    tna:      teaToTna(r.tasaEfectivaAnualMaxima),
+    tea:      r.tasaEfectivaAnualMaxima,
+    cft:      r.costoFinancieroEfectivoTotalMaximo,
+    plazoMax: r.plazoMaximoOtorgable,
+    montoMin: r.montoMinimoOtorgable,
+    montoMax: r.montoMaximoOtorgable,
+    fecha:    r.fechaInformacion,
   }));
 }
+
+async function fetchFromBCRA(): Promise<LoanProduct[] | null> {
+  try {
+    const res = await fetch(BCRA_URL, {
+      signal: AbortSignal.timeout(10_000),
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) throw new Error(`BCRA respondió ${res.status}`);
+    const json = (await res.json()) as { results?: BcraPrestamo[] };
+    const products = toLoanProducts(json.results ?? []);
+    if (products.length === 0) throw new Error("BCRA sin productos válidos");
+    return products;
+  } catch (err) {
+    console.error("[loans] no se pudo consultar el BCRA:", err);
+    return null;
+  }
+}
+
+let cache: { pesos: LoanProduct[]; fetchedAt: number } | null = null;
 
 // ─── Server function ──────────────────────────────────────────────────────────
 
 export const getLoanProducts = createServerFn({ method: "GET" }).handler(async () => {
-  try {
-    // Nombre exacto: en Linux (Vercel) el filesystem distingue mayúsculas.
-    const csvPath = path.join(process.cwd(), "data", "PERSONALES.CSV");
-    const buf = await fs.readFile(csvPath);
-
-    // Quitar BOM si está presente
-    const offset = (buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) ? 3 : 0;
-    const raw = buf.slice(offset);
-
-    // Detectar formato por número de columnas (insensible al encoding)
-    // BCRA tiene 21 columnas; el formato propio empieza con "id;"
-    const firstLine = raw.toString("utf-8").trimStart().split(/\r?\n/)[0] ?? "";
-    const isBcra = !firstLine.startsWith("id;") && firstLine.split(";").length >= 15;
-
-    // BCRA usa Windows-1252 / Latin-1; el formato propio es UTF-8
-    const text = isBcra ? raw.toString("latin1") : raw.toString("utf-8");
-
-    const all = isBcra ? parseBcraFormat(text) : parseCustomFormat(text);
-    if (all.length === 0) throw new Error("CSV sin productos válidos");
-
-    return {
-      pesos: all.filter(p => p.tipo === "pesos").sort((a, b) => a.cft - b.cft),
-      uva:   all.filter(p => p.tipo === "uva").sort((a, b) => a.cft - b.cft),
-    };
-  } catch (err) {
-    // En producción (serverless) el CSV puede no estar disponible en el bundle.
-    // Fallback a los datos estáticos curados (misma fuente BCRA jun 2026).
-    console.error("[loans] no se pudo leer PERSONALES.CSV, usando datos estáticos:", err);
-    return {
-      pesos: [...PESOS_PRODUCTS].sort((a, b) => a.cft - b.cft),
-      uva:   [...UVA_PRODUCTS].sort((a, b) => a.cft - b.cft),
-    };
+  if (!cache || Date.now() - cache.fetchedAt >= CACHE_TTL_MS) {
+    const fresh = await fetchFromBCRA();
+    if (fresh) cache = { pesos: fresh, fetchedAt: Date.now() };
   }
+
+  // Si el BCRA no responde se usa el último dato obtenido y, si no hay ninguno,
+  // los datos estáticos de respaldo.
+  const pesos = cache?.pesos ?? PESOS_PRODUCTS;
+  return {
+    pesos:  [...pesos].sort((a, b) => a.cft - b.cft),
+    fuente: cache ? ("BCRA" as const) : ("respaldo" as const),
+  };
 });

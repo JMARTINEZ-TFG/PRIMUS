@@ -9,19 +9,22 @@ import { MetricCard } from "@/components/MetricCard";
 import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { getUserAccounts, type Account } from "@/lib/api/accounts.functions";
 import { getObligations, computeEstado, formatObligationDate, type Obligation } from "@/lib/api/obligations.functions";
+import { getTipoCambio } from "@/lib/api/fx.functions";
 
 export const Route = createFileRoute("/_app/dashboard")({
   loader: async () => {
-    const [accounts, obligations] = await Promise.all([getUserAccounts(), getObligations()]);
-    return { accounts, obligations };
+    const [accounts, obligations, tipoCambio] = await Promise.all([
+      getUserAccounts(),
+      getObligations(),
+      getTipoCambio(),
+    ]);
+    return { accounts, obligations, tipoCambio };
   },
   component: Dashboard,
 });
 
-// 1 USD ≈ 1 500 ARS — tipo de cambio de referencia para el TFG
-const USD_TO_ARS = 1500;
-
-function consolidate(accounts: Account[]) {
+// Los saldos en USD se convierten con el tipo de cambio minorista del BCRA
+function consolidate(accounts: Account[], usdToArs: number) {
   let ars = 0;
   let usd = 0;
   for (const acc of accounts) {
@@ -29,7 +32,7 @@ function consolidate(accounts: Account[]) {
     if (acc.moneda === "USD") usd += s;
     else ars += s;
   }
-  const totalArs = ars + usd * USD_TO_ARS;
+  const totalArs = ars + usd * usdToArs;
   return { ars, usd, totalArs };
 }
 
@@ -130,12 +133,15 @@ function buildLiquidityData(totalArs: number, obligations: Obligation[]): LiqDay
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 function Dashboard() {
-  const { accounts, obligations } = Route.useLoaderData();
-  const { ars, usd, totalArs } = consolidate(accounts);
+  const { accounts, obligations, tipoCambio } = Route.useLoaderData();
+  const { ars, usd, totalArs } = consolidate(accounts, tipoCambio.valor);
 
+  const tcLabel = `TC ${tipoCambio.fuente === "BCRA" ? "BCRA" : "ref."} $${tipoCambio.valor.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${
+    tipoCambio.fecha ? ` (${tipoCambio.fecha.slice(8, 10)}/${tipoCambio.fecha.slice(5, 7)})` : ""
+  }`;
   const saldoLabel = formatArs(totalArs);
   const saldoHint = usd > 0
-    ? `${accounts.length} ${accounts.length === 1 ? "cuenta" : "cuentas"} · USD ${usd.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+    ? `${accounts.length} ${accounts.length === 1 ? "cuenta" : "cuentas"} · USD ${usd.toLocaleString("es-AR", { minimumFractionDigits: 2 })} · ${tcLabel}`
     : `${accounts.length} ${accounts.length === 1 ? "cuenta" : "cuentas"}`;
 
   const hasAccounts = accounts.length > 0;
