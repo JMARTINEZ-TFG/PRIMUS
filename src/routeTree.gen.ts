@@ -9,33 +9,27 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as VerifyEmailRouteImport } from './routes/verify-email'
-import { Route as ResetPasswordRouteImport } from './routes/reset-password'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as AdminRouteImport } from './routes/admin'
-import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AppReceiptsRouteImport } from './routes/_app.receipts'
-import { Route as AppLoansRouteImport } from './routes/_app.loans'
-import { Route as AppInvestmentsRouteImport } from './routes/_app.investments'
-import { Route as AppFaqRouteImport } from './routes/_app.faq'
-import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
-import { Route as AppCashflowRouteImport } from './routes/_app.cashflow'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as AppAccountsRouteImport } from './routes/_app.accounts'
+import { Route as AppCashflowRouteImport } from './routes/_app.cashflow'
+import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
+import { Route as AppFaqRouteImport } from './routes/_app.faq'
+import { Route as AppInvestmentsRouteImport } from './routes/_app.investments'
+import { Route as AppLoansRouteImport } from './routes/_app.loans'
+import { Route as AppReceiptsRouteImport } from './routes/_app.receipts'
 
-const VerifyEmailRoute = VerifyEmailRouteImport.update({
-  id: '/verify-email',
-  path: '/verify-email',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ResetPasswordRoute = ResetPasswordRouteImport.update({
-  id: '/reset-password',
-  path: '/reset-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -43,38 +37,24 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppRoute = AppRouteImport.update({
-  id: '/_app',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppReceiptsRoute = AppReceiptsRouteImport.update({
-  id: '/receipts',
-  path: '/receipts',
-  getParentRoute: () => AppRoute,
+const VerifyEmailRoute = VerifyEmailRouteImport.update({
+  id: '/verify-email',
+  path: '/verify-email',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const AppLoansRoute = AppLoansRouteImport.update({
-  id: '/loans',
-  path: '/loans',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppInvestmentsRoute = AppInvestmentsRouteImport.update({
-  id: '/investments',
-  path: '/investments',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppFaqRoute = AppFaqRouteImport.update({
-  id: '/faq',
-  path: '/faq',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDashboardRoute = AppDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
+const AppAccountsRoute = AppAccountsRouteImport.update({
+  id: '/accounts',
+  path: '/accounts',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCashflowRoute = AppCashflowRouteImport.update({
@@ -82,9 +62,29 @@ const AppCashflowRoute = AppCashflowRouteImport.update({
   path: '/cashflow',
   getParentRoute: () => AppRoute,
 } as any)
-const AppAccountsRoute = AppAccountsRouteImport.update({
-  id: '/accounts',
-  path: '/accounts',
+const AppDashboardRoute = AppDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFaqRoute = AppFaqRouteImport.update({
+  id: '/faq',
+  path: '/faq',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppInvestmentsRoute = AppInvestmentsRouteImport.update({
+  id: '/investments',
+  path: '/investments',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppLoansRoute = AppLoansRouteImport.update({
+  id: '/loans',
+  path: '/loans',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppReceiptsRoute = AppReceiptsRouteImport.update({
+  id: '/receipts',
+  path: '/receipts',
   getParentRoute: () => AppRoute,
 } as any)
 
@@ -189,32 +189,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/verify-email': {
-      id: '/verify-email'
-      path: '/verify-email'
-      fullPath: '/verify-email'
-      preLoaderRoute: typeof VerifyEmailRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reset-password': {
-      id: '/reset-password'
-      path: '/reset-password'
-      fullPath: '/reset-password'
-      preLoaderRoute: typeof ResetPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin': {
-      id: '/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app': {
@@ -224,46 +203,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/receipts': {
-      id: '/_app/receipts'
-      path: '/receipts'
-      fullPath: '/receipts'
-      preLoaderRoute: typeof AppReceiptsRouteImport
-      parentRoute: typeof AppRoute
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_app/loans': {
-      id: '/_app/loans'
-      path: '/loans'
-      fullPath: '/loans'
-      preLoaderRoute: typeof AppLoansRouteImport
-      parentRoute: typeof AppRoute
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_app/investments': {
-      id: '/_app/investments'
-      path: '/investments'
-      fullPath: '/investments'
-      preLoaderRoute: typeof AppInvestmentsRouteImport
-      parentRoute: typeof AppRoute
+    '/verify-email': {
+      id: '/verify-email'
+      path: '/verify-email'
+      fullPath: '/verify-email'
+      preLoaderRoute: typeof VerifyEmailRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_app/faq': {
-      id: '/_app/faq'
-      path: '/faq'
-      fullPath: '/faq'
-      preLoaderRoute: typeof AppFaqRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/dashboard': {
-      id: '/_app/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof AppDashboardRouteImport
+    '/_app/accounts': {
+      id: '/_app/accounts'
+      path: '/accounts'
+      fullPath: '/accounts'
+      preLoaderRoute: typeof AppAccountsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/cashflow': {
@@ -273,11 +245,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCashflowRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/accounts': {
-      id: '/_app/accounts'
-      path: '/accounts'
-      fullPath: '/accounts'
-      preLoaderRoute: typeof AppAccountsRouteImport
+    '/_app/dashboard': {
+      id: '/_app/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AppDashboardRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/faq': {
+      id: '/_app/faq'
+      path: '/faq'
+      fullPath: '/faq'
+      preLoaderRoute: typeof AppFaqRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/investments': {
+      id: '/_app/investments'
+      path: '/investments'
+      fullPath: '/investments'
+      preLoaderRoute: typeof AppInvestmentsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/loans': {
+      id: '/_app/loans'
+      path: '/loans'
+      fullPath: '/loans'
+      preLoaderRoute: typeof AppLoansRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/receipts': {
+      id: '/_app/receipts'
+      path: '/receipts'
+      fullPath: '/receipts'
+      preLoaderRoute: typeof AppReceiptsRouteImport
       parentRoute: typeof AppRoute
     }
   }
