@@ -1,4 +1,6 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { toast } from "sonner";
+import { logoutUser } from "@/lib/api/auth.functions";
 import {
   LayoutDashboard,
   Wallet,
@@ -20,6 +22,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { PrimusLogo } from "./PrimusLogo";
 
@@ -39,6 +42,20 @@ export function AppSidebar() {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const isActive = (p: string) => pathname === p;
 
+  // En celular el menú es un panel superpuesto: se cierra al elegir una opción
+  // para que no quede tapando la pantalla a la que se navegó
+  const { isMobile, setOpenMobile } = useSidebar();
+  const closeMobile = () => { if (isMobile) setOpenMobile(false); };
+
+  // Igual que el botón del encabezado: cierra la sesión en el servidor antes de ir al login
+  const navigate = useNavigate();
+  const handleLogout = async () => {
+    closeMobile();
+    await logoutUser();
+    toast.success("Sesión cerrada.");
+    navigate({ to: "/login" });
+  };
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border px-3 py-4">
@@ -52,7 +69,7 @@ export function AppSidebar() {
               {nav.map((item) => (
                 <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
-                    <Link to={item.url} className="flex items-center gap-2">
+                    <Link to={item.url} className="flex items-center gap-2" onClick={closeMobile}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>
@@ -70,7 +87,7 @@ export function AppSidebar() {
               {market.map((item) => (
                 <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
-                    <Link to={item.url} className="flex items-center gap-2">
+                    <Link to={item.url} className="flex items-center gap-2" onClick={closeMobile}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>
@@ -85,18 +102,16 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild isActive={isActive("/faq")} tooltip="Glosario financiero">
-              <Link to="/faq" className="flex items-center gap-2">
+              <Link to="/faq" className="flex items-center gap-2" onClick={closeMobile}>
                 <HelpCircle className="h-4 w-4" />
                 <span>Glosario</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Cerrar sesión">
-              <Link to="/login" className="flex items-center gap-2">
-                <LogOut className="h-4 w-4" />
-                <span>Cerrar sesión</span>
-              </Link>
+            <SidebarMenuButton tooltip="Cerrar sesión" onClick={handleLogout}>
+              <LogOut className="h-4 w-4" />
+              <span>Cerrar sesión</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
