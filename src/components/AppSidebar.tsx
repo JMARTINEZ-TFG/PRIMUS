@@ -58,7 +58,8 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="border-b border-sidebar-border px-3 py-4">
+      {/* Misma altura que el encabezado de la página (h-16) para que los bordes queden alineados */}
+      <SidebarHeader className="h-16 justify-center border-b border-sidebar-border px-3 py-0 group-data-[collapsible=icon]:px-2">
         <PrimusLogo />
       </SidebarHeader>
       <SidebarContent>

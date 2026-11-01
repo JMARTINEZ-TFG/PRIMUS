@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet, redirect, useRouterState } from "@tanstack/react-router";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { LogOut } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import { getCurrentUser, logoutUser } from "@/lib/api/auth.functions";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -45,7 +45,7 @@ function AppLayout() {
         <AppSidebar />
         <div className="flex flex-1 flex-col">
           <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md md:px-6">
-            <SidebarTrigger />
+            <MenuToggle />
             <div className="hidden flex-col md:flex">
               <h1 className="text-base font-semibold leading-tight">{meta.title}</h1>
               <p className="text-xs text-muted-foreground">{meta.subtitle}</p>
@@ -72,5 +72,17 @@ function AppLayout() {
         </div>
       </div>
     </SidebarProvider>
+  );
+}
+
+// Botón de menú hamburguesa: abre/colapsa el menú lateral (en celular lo despliega)
+function MenuToggle() {
+  const { toggleSidebar } = useSidebar();
+  return (
+    <button onClick={toggleSidebar} title="Menú"
+      className="grid h-9 w-9 place-items-center rounded-lg text-foreground transition hover:bg-muted">
+      <Menu className="h-5 w-5" />
+      <span className="sr-only">Abrir o cerrar el menú</span>
+    </button>
   );
 }
