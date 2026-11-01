@@ -188,6 +188,15 @@ export const linkPrometeoAccount = createServerFn({ method: "POST" })
         key: result.key,
       };
     }
+    if (result.status === "user_blocked") {
+      throw new Error("El banco bloqueó el usuario. Desbloquealo desde el home banking y volvé a intentar.");
+    }
+    if (result.status === "max_sessions_reached") {
+      throw new Error("Hay demasiadas sesiones abiertas con el banco. Cerralas e intentá de nuevo en unos minutos.");
+    }
+    if (result.status === "missing_credentials") {
+      throw new Error("Faltan datos para conectar con el banco. Revisá usuario y contraseña.");
+    }
 
     // En modo mock la clave debe llevar el provider virtual (no "test") para que
     // cada banco genere un saldo distinto en getAccounts.
