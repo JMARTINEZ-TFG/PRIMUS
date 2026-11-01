@@ -139,6 +139,25 @@ El monto de cada cuota depende de tres factores: el capital prestado, la tasa (C
 
 La diferencia entre TEA y CFT puede ser del 20% al 40% adicional. Por eso nunca compares préstamos usando solo la TEA anunciada.`,
       },
+      {
+        q: "¿Qué es un préstamo UVA?",
+        a: `La UVA (Unidad de Valor Adquisitivo) es una unidad de medida creada por el BCRA en 2016 que se actualiza todos los días según la inflación, a través del índice CER. Empezó valiendo $14,05 y su valor diario lo publica el BCRA.
+
+En un préstamo UVA la deuda no se fija en pesos sino en UVAs. Por ejemplo, si pedís $1.000.000 y ese día la UVA vale $2.000, debés 500 UVAs. Cada mes pagás una cantidad fija de UVAs, que se convierte a pesos con el valor de la UVA del día del pago. Por eso la cuota en pesos sube a medida que sube la inflación.
+
+La tasa de un préstamo UVA es una tasa "real": es lo que pagás por encima de la inflación. Por eso se ve mucho más baja que la de un préstamo en pesos, aunque eso no significa que sea más barato.`,
+      },
+      {
+        q: "¿Cuál es la diferencia entre un préstamo UVA y uno en pesos?",
+        a: `La diferencia está en quién asume el riesgo de la inflación:
+
+• Préstamo en pesos a tasa fija: la cuota es siempre la misma en pesos. La tasa ya incluye la inflación que el banco espera, por eso es más alta. Si la inflación sube, la cuota pesa cada vez menos en tu bolsillo; si baja más de lo esperado, terminás pagando una tasa real alta.
+• Préstamo UVA: la cuota empieza más baja, pero se ajusta todos los meses por inflación. Si tus ingresos suben al mismo ritmo, la cuota pesa siempre lo mismo; si suben menos, la cuota se vuelve más difícil de pagar.
+
+Ejemplo: con una inflación del 2% mensual, una cuota UVA que hoy es de $50.000 pasa a unos $51.000 el mes siguiente y a unos $63.400 al cabo de un año.
+
+Por eso el CFT de un préstamo UVA no se puede comparar directamente con el de uno en pesos: en el UVA hay que sumarle la inflación futura, que nadie conoce de antemano. En el comparador de financiaciones de Primus, los préstamos UVA están marcados con la etiqueta "UVA".`,
+      },
     ],
   },
   {
