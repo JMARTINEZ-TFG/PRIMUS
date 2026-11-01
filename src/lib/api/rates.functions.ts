@@ -78,8 +78,18 @@ type FCIFondo = {
   tipoRenta: string;
   plazoLiquidacionDias: number;
   fecha: string;
-  rendimientos: { ultimos7Dias: number } | null;
+  // ultimos7Dias es el rendimiento (%) de los últimos 7 días, sin anualizar;
+  // tnaEstimada es la TNA (%) estimada por ArgentinaDatos sobre el último mes
+  rendimientos: { ultimos7Dias?: number; tnaEstimada?: number } | null;
 };
+
+// TNA (%) de un FCI: la estimada por la API o, si falta, el rendimiento de 7 días anualizado
+function fciTna(f: FCIFondo): number {
+  const r = f.rendimientos;
+  if (r?.tnaEstimada != null && r.tnaEstimada > 0) return r.tnaEstimada;
+  if (r?.ultimos7Dias != null && r.ultimos7Dias > 0) return (r.ultimos7Dias * 365) / 7;
+  return 0;
+}
 
 // Mapeo: nombre exacto del fondo FCI → entidad comercial que lo distribuye
 const FCI_MONEY_MARKET: Record<string, string> = {
@@ -99,6 +109,15 @@ export type CuentaRemunRate = {
   tea: number;              // percentage
   tope: string | null;      // cap formatted, e.g. "hasta $1M"
   fecha: string;
+  condicionesCorto: string | null;
+  variantes?: CuentaVariante[]; // otras modalidades de la misma cuenta, p. ej. "Frascos 7-13"
+};
+
+export type CuentaVariante = {
+  nombre: string;           // modalidad, p. ej. "Frascos 14-27"
+  tna: number;
+  tea: number;
+  tope: string | null;
   condicionesCorto: string | null;
 };
 
@@ -121,6 +140,18 @@ const CUENTA_NAMES: Record<string, string> = {
   "BICA CUENTA POSITIVA 3": "Banco Bica ($750K–$2.25M)",
   "BICA CUENTA POSITIVA 4": "Banco Bica (hasta $750K)",
 };
+
+// "NARANJA X FRASCOS 14-27" → cuenta "Naranja X", modalidad "Frascos 14-27".
+// Los nombres con traducción propia (Ualá Plus, tramos de Bica) no se agrupan.
+function cuentaBase(fondo: string): { nombre: string; variante: string | null } {
+  if (CUENTA_NAMES[fondo]) return { nombre: CUENTA_NAMES[fondo], variante: null };
+  const base = Object.keys(CUENTA_NAMES)
+    .filter((k) => fondo.startsWith(`${k} `))
+    .sort((a, b) => b.length - a.length)[0];
+  if (!base) return { nombre: fondo, variante: null };
+  const resto = fondo.slice(base.length + 1).toLowerCase();
+  return { nombre: CUENTA_NAMES[base], variante: resto.charAt(0).toUpperCase() + resto.slice(1) };
+}
 
 function formatTope(tope: number | null): string | null {
   if (tope === null) return null;
@@ -149,25 +180,53 @@ export const getCuentasRemuneradas = createServerFn({ method: "GET" }).handler(a
   const fondosData = (await fondosRes.json()) as { fondos: FCIFondo[] };
 
   // Billeteras y cuentas no-FCI — excluir entidades ya cubiertas por FCI
-  const fromOtros: CuentaRemunRate[] = otrosData
+  const filas = otrosData
     .filter((r) => r.tna > 0)
-    .map((r): CuentaRemunRate => ({
-      nombre:           CUENTA_NAMES[r.fondo] ?? r.fondo,
-      tna:              Math.round(r.tna * 10000) / 100,
-      tea:              tnaToTea(r.tna * 100),
-      tope:             formatTope(r.tope),
-      fecha:            r.fecha,
-      condicionesCorto: r.condicionesCorto ?? null,
-    }))
-    .filter((r) => !fciCovered.has(r.nombre));
+    .map((r) => {
+      const { nombre, variante } = cuentaBase(r.fondo);
+      const fila: CuentaRemunRate = {
+        nombre,
+        tna:              Math.round(r.tna * 10000) / 100,
+        tea:              tnaToTea(r.tna * 100),
+        tope:             formatTope(r.tope),
+        fecha:            r.fecha,
+        condicionesCorto: r.condicionesCorto ?? null,
+      };
+      return { fila, variante };
+    })
+    .filter(({ fila }) => !fciCovered.has(fila.nombre));
+
+  // Una fila por cuenta: las modalidades de la misma cuenta (p. ej. los "Frascos"
+  // de Naranja X) se agrupan en la de mayor TNA, priorizando la cuenta principal
+  const porCuenta = new Map<string, typeof filas>();
+  for (const f of filas) {
+    if (!porCuenta.has(f.fila.nombre)) porCuenta.set(f.fila.nombre, []);
+    porCuenta.get(f.fila.nombre)!.push(f);
+  }
+  const fromOtros: CuentaRemunRate[] = [...porCuenta.values()].map((grupo) => {
+    const [principal, ...otras] = [...grupo].sort(
+      (a, b) => b.fila.tna - a.fila.tna || Number(a.variante !== null) - Number(b.variante !== null),
+    );
+    if (otras.length === 0) return principal.fila;
+    const variantes: CuentaVariante[] = otras
+      .map((o) => ({
+        nombre:           o.variante ?? "Cuenta",
+        tna:              o.fila.tna,
+        tea:              o.fila.tea,
+        tope:             o.fila.tope,
+        condicionesCorto: o.fila.condicionesCorto,
+      }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { numeric: true }));
+    return { ...principal.fila, variantes };
+  });
 
   // Fondos Money Market conocidos → nombre de entidad comercial
   const fromFCI: CuentaRemunRate[] = fondosData.fondos
-    .filter((f) => FCI_MONEY_MARKET[f.nombre] && (f.rendimientos?.ultimos7Dias ?? 0) > 0)
+    .filter((f) => FCI_MONEY_MARKET[f.nombre] && fciTna(f) > 0)
     .map((f): CuentaRemunRate => ({
       nombre:           FCI_MONEY_MARKET[f.nombre],
-      tna:              Math.round((f.rendimientos!.ultimos7Dias) * 100) / 100,
-      tea:              tnaToTea(f.rendimientos!.ultimos7Dias),
+      tna:              Math.round(fciTna(f) * 100) / 100,
+      tea:              tnaToTea(fciTna(f)),
       tope:             null,
       fecha:            f.fecha,
       condicionesCorto: null,

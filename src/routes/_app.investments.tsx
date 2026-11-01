@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  TrendingUp, Sparkles, Trophy, Info,
+  TrendingUp, Sparkles, Trophy, Info, ChevronDown,
 } from "lucide-react";
 
 // ─── Logo helpers ─────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ function EntityLogo({ src, name }: { src: string | null; name: string }) {
   if (!src || err) {
     return (
       <div
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-bold text-white"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-[8px] text-sm font-bold text-white"
         style={{ backgroundColor: nameColor(name) }}
       >
         {letter}
@@ -74,11 +74,11 @@ function EntityLogo({ src, name }: { src: string | null; name: string }) {
     );
   }
   return (
-    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-white">
+    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-border bg-white">
       <img
         src={src}
         alt=""
-        className="h-7 w-7 object-contain"
+        className="h-full w-full object-contain"
         onError={() => setErr(true)}
       />
     </div>
@@ -86,7 +86,7 @@ function EntityLogo({ src, name }: { src: string | null; name: string }) {
 }
 import {
   getPlazofijo, getCuentasRemuneradas,
-  type PlazofijRate, type CuentaRemunRate,
+  type PlazofijRate, type CuentaRemunRate, type CuentaVariante,
 } from "@/lib/api/rates.functions";
 import { getUserAccounts } from "@/lib/api/accounts.functions";
 import { getObligations } from "@/lib/api/obligations.functions";
@@ -123,6 +123,44 @@ function gainCr(amount: number, tea: number, days: number): number {
   return Math.round(amount * (Math.pow(1 + tea / 100, days / 365) - 1));
 }
 
+// ─── Otras modalidades de una misma cuenta (p. ej. Frascos de Naranja X) ──────
+
+function VerMasOfertas({ count, abierta, onToggle }: { count: number; abierta: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      className="mt-1 flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+    >
+      <ChevronDown className={`h-3 w-3 transition ${abierta ? "rotate-180" : ""}`} />
+      {abierta ? "Ocultar" : "Ver"} {count} {count === 1 ? "oferta más" : "ofertas más"}
+    </button>
+  );
+}
+
+function VariantesList({ variantes, amount, days }: { variantes: CuentaVariante[]; amount: number; days: number }) {
+  return (
+    <div className="ml-6 space-y-1.5 border-l-2 border-border pl-3">
+      {variantes.map((v) => (
+        <div
+          key={v.nombre}
+          className="flex w-full flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-3 py-2"
+        >
+          <div className="min-w-[150px] flex-1 text-[11px] text-muted-foreground">
+            <span className="font-medium text-foreground">{v.nombre}</span>
+            {[v.tope, v.condicionesCorto].filter(Boolean).map((t) => ` · ${t}`).join("")}
+          </div>
+          <div className="text-xs font-semibold">TNA {v.tna.toFixed(2)}%</div>
+          <div className="text-xs font-semibold">TEA {v.tea.toFixed(1)}%</div>
+          <div className="w-28 text-right text-xs font-semibold text-success">
+            +ARS {gainCr(amount, v.tea, days).toLocaleString("es-AR")}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const PLAZOS = [30, 60, 90, 180, 365];
 
 function Investments() {
@@ -143,6 +181,8 @@ function Investments() {
   const [selectedCrIdx, setSelectedCrIdx]    = useState(0);
   const [selectedFciIdx, setSelectedFciIdx]  = useState(0);
   const [selectedAllIdx, setSelectedAllIdx]  = useState(0);
+  const [expandida, setExpandida]            = useState<string | null>(null);
+  const toggleExpandida = (key: string) => setExpandida((k) => (k === key ? null : key));
 
   const pfSorted  = [...plazofijo].sort((a, b) =>
     showNoClientes ? b.tnaNoClientes - a.tnaNoClientes : b.tnaClientes - a.tnaClientes,
@@ -156,6 +196,7 @@ function Investments() {
     tna: number;
     tea: number;
     logoSrc: string | null;
+    variantes?: CuentaVariante[];
   };
   const consolidado: ConsolidadoItem[] = [
     ...pfSorted.map(r => ({
@@ -171,6 +212,7 @@ function Investments() {
       tna:     r.tna,
       tea:     r.tea,
       logoSrc: crLogoUrl(r.nombre),
+      variantes: r.variantes,
     })),
     ...fciSorted.map(r => ({
       nombre:  r.nombre,
@@ -201,6 +243,25 @@ function Investments() {
   const selCr  = crSorted[selectedCrIdx]     as CuentaRemunRate | undefined;
   const selFci = fciSorted[selectedFciIdx]   as CuentaRemunRate | undefined;
   const selAll = consolidado[selectedAllIdx] as ConsolidadoItem | undefined;
+
+  // Simulación de la opción seleccionada en la pestaña activa
+  const simulacion = (() => {
+    if (tab === "pf" && selPf) {
+      const tna = showNoClientes ? selPf.tnaNoClientes : selPf.tnaClientes;
+      return { titulo: `${selPf.entidad} · Plazo Fijo ${days} días`, ganancia: gainPf(amount, tna, days), tna, tea: selPf.tea };
+    }
+    if (tab === "cr" && selCr) {
+      return { titulo: `${selCr.nombre} · Cuenta Remunerada ${days} días`, ganancia: gainCr(amount, selCr.tea, days), tna: selCr.tna, tea: selCr.tea };
+    }
+    if (tab === "fci" && selFci) {
+      return { titulo: `${selFci.nombre} · Fondo Money Market ${days} días`, ganancia: gainCr(amount, selFci.tea, days), tna: selFci.tna, tea: selFci.tea };
+    }
+    if (tab === "all" && selAll) {
+      const ganancia = selAll.tipo === "Plazo Fijo" ? gainPf(amount, selAll.tna, days) : gainCr(amount, selAll.tea, days);
+      return { titulo: `${selAll.nombre} · ${selAll.tipo} · ${days} días`, ganancia, tna: selAll.tna, tea: selAll.tea };
+    }
+    return null;
+  })();
 
   return (
     <div className="space-y-6">
@@ -271,50 +332,25 @@ function Investments() {
               </div>
             </div>
           </div>
-          {tab === "pf" && selPf && (
-            <div className="rounded-xl bg-[image:var(--gradient-primary)] p-4 text-primary-foreground shadow-[var(--shadow-glow)]">
-              <div className="text-xs opacity-90">{selPf.entidad} · Plazo Fijo {days} días</div>
-              <div className="mt-1 text-2xl font-bold tracking-tight">
-                + ARS {gainPf(amount, showNoClientes ? selPf.tnaNoClientes : selPf.tnaClientes, days).toLocaleString("es-AR")}
+          {simulacion && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl bg-[image:var(--gradient-primary)] p-4 text-primary-foreground shadow-[var(--shadow-glow)]">
+                <div className="text-xs opacity-90">{simulacion.titulo}</div>
+                <div className="mt-1 text-2xl font-bold tracking-tight">
+                  + ARS {simulacion.ganancia.toLocaleString("es-AR")}
+                </div>
+                <div className="text-xs opacity-90">
+                  TNA {simulacion.tna.toFixed(2)}% · TEA {simulacion.tea.toFixed(1)}%
+                </div>
               </div>
-              <div className="text-xs opacity-90">
-                TNA {(showNoClientes ? selPf.tnaNoClientes : selPf.tnaClientes).toFixed(2)}% · TEA {selPf.tea.toFixed(1)}%
-              </div>
-            </div>
-          )}
-          {tab === "cr" && selCr && (
-            <div className="rounded-xl bg-[image:var(--gradient-primary)] p-4 text-primary-foreground shadow-[var(--shadow-glow)]">
-              <div className="text-xs opacity-90">{selCr.nombre} · Cuenta Remunerada {days} días</div>
-              <div className="mt-1 text-2xl font-bold tracking-tight">
-                + ARS {gainCr(amount, selCr.tea, days).toLocaleString("es-AR")}
-              </div>
-              <div className="text-xs opacity-90">
-                TNA {selCr.tna.toFixed(2)}% · TEA {selCr.tea.toFixed(1)}%
-              </div>
-            </div>
-          )}
-          {tab === "fci" && selFci && (
-            <div className="rounded-xl bg-[image:var(--gradient-primary)] p-4 text-primary-foreground shadow-[var(--shadow-glow)]">
-              <div className="text-xs opacity-90">{selFci.nombre} · Fondo Money Market {days} días</div>
-              <div className="mt-1 text-2xl font-bold tracking-tight">
-                + ARS {gainCr(amount, selFci.tea, days).toLocaleString("es-AR")}
-              </div>
-              <div className="text-xs opacity-90">
-                TNA {selFci.tna.toFixed(2)}% · TEA {selFci.tea.toFixed(1)}%
-              </div>
-            </div>
-          )}
-          {tab === "all" && selAll && (
-            <div className="rounded-xl bg-[image:var(--gradient-primary)] p-4 text-primary-foreground shadow-[var(--shadow-glow)]">
-              <div className="text-xs opacity-90">{selAll.nombre} · {selAll.tipo} · {days} días</div>
-              <div className="mt-1 text-2xl font-bold tracking-tight">
-                + ARS {(selAll.tipo === "Plazo Fijo"
-                  ? gainPf(amount, selAll.tna, days)
-                  : gainCr(amount, selAll.tea, days)
-                ).toLocaleString("es-AR")}
-              </div>
-              <div className="text-xs opacity-90">
-                TNA {selAll.tna.toFixed(2)}% · TEA {selAll.tea.toFixed(1)}%
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Total a cobrar</div>
+                <div className="mt-1 text-xl font-bold">
+                  ARS {(amount + simulacion.ganancia).toLocaleString("es-AR")}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  capital ARS {amount.toLocaleString("es-AR")} + intereses ARS {simulacion.ganancia.toLocaleString("es-AR")}
+                </div>
               </div>
             </div>
           )}
@@ -356,7 +392,7 @@ function Investments() {
             <div>
               <h3 className="text-base font-semibold">Ranking Plazo Fijo</h3>
               <p className="text-xs text-muted-foreground">
-                Entidades Bancarias · Acreditación Periódica
+                Entidades Bancarias · Acreditación Periódica · Fuente: BCRA, Régimen de Transparencia (actualización automática)
               </p>
             </div>
             <div className="flex items-center gap-1 rounded-xl border border-border bg-muted/40 p-1">
@@ -439,7 +475,7 @@ function Investments() {
             <div>
               <h3 className="text-base font-semibold">Ranking Cuentas Remuneradas</h3>
               <p className="text-xs text-muted-foreground">
-                Billeteras Virtuales y Bancos Digitales · Acreditación Diaria
+                Billeteras Virtuales y Bancos Digitales · Acreditación Diaria · Fuente: ArgentinaDatos (actualización automática)
               </p>
             </div>
           </div>
@@ -449,12 +485,15 @@ function Investments() {
               const gain       = gainCr(amount, r.tea, days);
               const isFirst    = i === 0;
               const isSelected = i === selectedCrIdx;
+              const expKey     = `cr-${r.nombre}`;
               return (
-                <button
-                  key={`${r.nombre}-${i}`}
-                  type="button"
+                <div key={`${r.nombre}-${i}`} className="space-y-1.5">
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedCrIdx(i)}
-                  className={`w-full text-left flex flex-wrap items-center gap-3 rounded-xl border p-3.5 transition ${
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedCrIdx(i); } }}
+                  className={`w-full cursor-pointer text-left flex flex-wrap items-center gap-3 rounded-xl border p-3.5 transition ${
                     isSelected
                       ? "border-primary bg-primary/5 ring-1 ring-primary/30"
                       : "border-border bg-card hover:border-primary/40"
@@ -475,6 +514,13 @@ function Investments() {
                         {[r.tope, r.condicionesCorto].filter(Boolean).join(" · ")}
                       </div>
                     )}
+                    {r.variantes && (
+                      <VerMasOfertas
+                        count={r.variantes.length}
+                        abierta={expandida === expKey}
+                        onToggle={() => toggleExpandida(expKey)}
+                      />
+                    )}
                   </div>
                   <div className="text-right">
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
@@ -488,7 +534,11 @@ function Investments() {
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{days === 365 ? "1 año" : `${days} días`}</div>
                     <div className="text-sm font-bold text-success">+ARS {gain.toLocaleString("es-AR")}</div>
                   </div>
-                </button>
+                </div>
+                {r.variantes && expandida === expKey && (
+                  <VariantesList variantes={r.variantes} amount={amount} days={days} />
+                )}
+                </div>
               );
             })}
           </div>
@@ -508,7 +558,7 @@ function Investments() {
           <div>
             <h3 className="text-base font-semibold">Ranking Fondos Comunes de Inversión</h3>
             <p className="text-xs text-muted-foreground">
-              Fondos Money Market · Liquidez Inmediata
+              Fondos Money Market · Liquidez Inmediata · Fuente: ArgentinaDatos (actualización automática)
             </p>
           </div>
 
@@ -571,7 +621,8 @@ function Investments() {
           <div>
             <h3 className="text-base font-semibold">Ranking Consolidado</h3>
             <p className="text-xs text-muted-foreground">
-              Plazo Fijo · Cuentas Remuneradas · FCI · ordenado de mayor a menor TEA
+              Plazo Fijo · Cuentas Remuneradas · FCI · Fuentes: BCRA, Régimen de
+              Transparencia y ArgentinaDatos (actualización automática)
             </p>
           </div>
 
@@ -584,12 +635,15 @@ function Investments() {
                 r.tipo === "Plazo Fijo"        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
                 r.tipo === "Cuenta Remunerada" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" :
                                                   "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300";
+              const expKey = `all-${r.tipo}-${r.nombre}`;
               return (
-                <button
-                  key={`${r.nombre}-${r.tipo}-${i}`}
-                  type="button"
+                <div key={`${r.nombre}-${r.tipo}-${i}`} className="space-y-1.5">
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedAllIdx(i)}
-                  className={`w-full text-left flex flex-wrap items-center gap-3 rounded-xl border p-3.5 transition ${
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedAllIdx(i); } }}
+                  className={`w-full cursor-pointer text-left flex flex-wrap items-center gap-3 rounded-xl border p-3.5 transition ${
                     isSelected
                       ? "border-primary bg-primary/5 ring-1 ring-primary/30"
                       : "border-border bg-card hover:border-primary/40"
@@ -606,6 +660,13 @@ function Investments() {
                     <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${tipoBadgeClass}`}>
                       {r.tipo}
                     </span>
+                    {r.variantes && (
+                      <VerMasOfertas
+                        count={r.variantes.length}
+                        abierta={expandida === expKey}
+                        onToggle={() => toggleExpandida(expKey)}
+                      />
+                    )}
                   </div>
                   <div className="text-right">
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
@@ -619,7 +680,11 @@ function Investments() {
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{days === 365 ? "1 año" : `${days} días`}</div>
                     <div className="text-sm font-bold text-success">+ARS {gain.toLocaleString("es-AR")}</div>
                   </div>
-                </button>
+                </div>
+                {r.variantes && expandida === expKey && (
+                  <VariantesList variantes={r.variantes} amount={amount} days={days} />
+                )}
+                </div>
               );
             })}
           </div>
