@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useRef } from "react";
+import { useMemo, useState, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Landmark, Award, Info } from "lucide-react";
+import { Landmark, Award, Info, ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { getLoanProducts } from "@/lib/api/loans.functions";
 import type { LoanProduct } from "@/lib/api/loans-data";
 import { getUserAccounts } from "@/lib/api/accounts.functions";
@@ -12,7 +13,7 @@ import { getTipoCambio } from "@/lib/api/fx.functions";
 
 export const Route = createFileRoute("/_app/loans")({
   loader: async () => {
-    const [{ pesos, fuente }, accounts, obligations, tipoCambio] = await Promise.all([
+    const [{ productos, fuente }, accounts, obligations, tipoCambio] = await Promise.all([
       getLoanProducts(),
       getUserAccounts(),
       getObligations(),
@@ -25,7 +26,7 @@ export const Route = createFileRoute("/_app/loans")({
       .filter(o => new Date(o.fecha_vencimiento + "T12:00:00") <= today)
       .reduce((s, o) => s + parseFloat(o.monto), 0);
     const insolvencia = Math.max(0, Math.round(totalVencidas - totalArs));
-    return { pesos, fuente, defaultAmount: insolvencia };
+    return { productos, fuente, defaultAmount: insolvencia };
   },
   component: Loans,
 });
@@ -54,8 +55,11 @@ const FAVICON_DOMAINS: Record<string, string> = {
   "Mercado Pago":      "mercadopago.com.ar",
 };
 
-function loanLogoUrl(entidad: string): string | null {
+// Prioridad: logo local → logo publicado por el BCRA (el mismo que usa Opciones de
+// Inversión) → favicon del sitio de la entidad (solo para los datos de respaldo)
+function loanLogoUrl(entidad: string, bcraLogo?: string): string | null {
   if (LOCAL_LOGOS[entidad]) return LOCAL_LOGOS[entidad];
+  if (bcraLogo) return bcraLogo;
   const d = FAVICON_DOMAINS[entidad];
   return d ? `https://www.google.com/s2/favicons?domain=${d}&sz=64` : null;
 }
@@ -72,7 +76,7 @@ function EntityLogo({ src, name }: { src: string | null; name: string }) {
   if (!src || err) {
     return (
       <div
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-bold text-white"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-[8px] text-sm font-bold text-white"
         style={{ backgroundColor: nameColor(name) }}
       >
         {letter}
@@ -80,9 +84,21 @@ function EntityLogo({ src, name }: { src: string | null; name: string }) {
     );
   }
   return (
-    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-white">
-      <img src={src} alt="" className="h-7 w-7 object-contain" onError={() => setErr(true)} />
+    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-border bg-white">
+      <img src={src} alt="" className="h-full w-full object-contain" onError={() => setErr(true)} />
     </div>
+  );
+}
+
+// Etiqueta para distinguir los préstamos UVA (su CFT es una tasa sobre la inflación)
+function UvaBadge() {
+  return (
+    <span
+      title="Préstamo UVA: el capital se ajusta por inflación (CER)"
+      className="rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-warning"
+    >
+      UVA
+    </span>
   );
 }
 
@@ -109,11 +125,15 @@ function fmtPlazo(p: number): string {
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const PLAZOS = [6, 12, 24, 36, 48, 60, 72];
+const PAGE_SIZE = 20;
+const TODOS = "Todos los beneficiarios";
+
+type EntityGroup = { entidad: string; ofertas: LoanProduct[] };
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 function Loans() {
-  const { pesos, fuente, defaultAmount } = Route.useLoaderData();
+  const { productos, fuente, defaultAmount } = Route.useLoaderData();
   const [amount, setAmount]           = useState(() => {
     if (typeof window !== "undefined") {
       const stored = sessionStorage.getItem("primus_insolvencia");
@@ -124,15 +144,42 @@ function Loans() {
   const [inputStr, setInputStr]       = useState(() => fmtArs(amount));
   const amountRef                     = useRef<HTMLInputElement>(null);
   const [plazo, setPlazo]             = useState(6);
-  const [selectedIdx, setSelectedIdx] = useState(0);
 
-  const selected     = pesos[selectedIdx] as LoanProduct | undefined;
+  // Ranking
+  const [visibles, setVisibles]       = useState(PAGE_SIZE);
+  const [expandida, setExpandida]     = useState<string | null>(null);
+  const [selectedId, setSelectedId]   = useState<string | null>(null);
+
+  // Ofertas en pesos y UVA (ya vienen ordenadas por CFT), agrupadas en una fila
+  // por entidad ordenada por su mejor CFT
+  const grupos = useMemo<EntityGroup[]>(() => {
+    const map = new Map<string, LoanProduct[]>();
+    for (const p of productos) {
+      if (!map.has(p.entidad)) map.set(p.entidad, []);
+      map.get(p.entidad)!.push(p);
+    }
+    return [...map.entries()].map(([entidad, ofertas]) => ({ entidad, ofertas }));
+  }, [productos]);
+
+  const allOfertas = grupos.flatMap((g) => g.ofertas);
+  const selected   = allOfertas.find((o) => o.id === selectedId) ?? grupos[0]?.ofertas[0];
   const selAvailable = selected && plazo <= selected.plazoMax;
   const selCuota     = selAvailable ? cuotaMensual(selected.cft, amount, plazo) : null;
   const selTotal     = selCuota != null ? selCuota * plazo : null;
   const selIntereses = selTotal != null ? selTotal - amount : null;
 
-  const bestCuota = pesos[0] ? cuotaMensual(pesos[0].cft, amount, plazo) : 0;
+  const best      = grupos[0]?.ofertas[0];
+  const bestCuota = best ? cuotaMensual(best.cft, amount, plazo) : 0;
+
+  const detalle = (o: LoanProduct) =>
+    [
+      o.producto,
+      o.condiciones,
+      o.perfil && o.perfil !== TODOS ? `Solo ${o.perfil.charAt(0).toLowerCase()}${o.perfil.slice(1)}` : null,
+      `hasta ARS ${fmtArs(o.montoMax)}`,
+      `${o.plazoMax} meses`,
+      o.fecha && `informado ${fmtFecha(o.fecha)}`,
+    ].filter(Boolean).join(" · ");
 
   return (
     <div className="space-y-6">
@@ -208,7 +255,9 @@ function Loans() {
           {selected && (
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl bg-[image:var(--gradient-primary)] p-4 text-primary-foreground shadow-[var(--shadow-glow)]">
-                <div className="text-xs opacity-90">{selected.entidad} · Cuota mensual</div>
+                <div className="text-xs opacity-90">
+                  {selected.entidad} · {selected.tipo === "uva" ? "Cuota inicial (UVA)" : "Cuota mensual"}
+                </div>
                 <div className="mt-1 text-2xl font-bold tracking-tight">
                   {selCuota != null ? `ARS ${fmtArs(selCuota)}` : "Plazo no disponible"}
                 </div>
@@ -230,6 +279,13 @@ function Loans() {
               )}
             </div>
           )}
+          {selected && (
+            <p className="text-xs text-muted-foreground">
+              {selected.tipo === "uva"
+                ? "En los préstamos UVA el capital se ajusta por inflación (CER): la cuota calculada es la inicial y varía mes a mes."
+                : "En los préstamos en pesos a tasa fija la cuota se mantiene igual durante todo el plazo: la cuota calculada es la que pagás cada mes."}
+            </p>
+          )}
         </div>
       </Card>
 
@@ -238,87 +294,147 @@ function Loans() {
         <div>
           <h3 className="text-base font-semibold">Ranking Oferta Crediticia</h3>
           <p className="text-xs text-muted-foreground">
-            Principales oferentes · ordenado de menor a mayor CFT ·{" "}
+            Préstamos personales de libre destino en pesos y UVA ·{" "}
             {fuente === "BCRA"
               ? "Fuente: BCRA, Régimen de Transparencia (actualización automática)"
               : "Datos de respaldo (junio 2026): el BCRA no respondió"}
           </p>
         </div>
 
-        <div className="mt-5 space-y-2.5">
-          {pesos.map((r, i) => {
+        <p className="mt-3 text-xs text-muted-foreground">
+          {grupos.length} {grupos.length === 1 ? "entidad" : "entidades"} · {allOfertas.length}{" "}
+          {allOfertas.length === 1 ? "oferta" : "ofertas"}
+        </p>
+
+        <div className="mt-3 space-y-2.5">
+          {grupos.length === 0 && (
+            <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+              No hay ofertas informadas al BCRA en los últimos 90 días.
+            </div>
+          )}
+
+          {grupos.slice(0, visibles).map((g, i) => {
+            const r          = g.ofertas[0];
             const available  = plazo <= r.plazoMax;
             const c          = available ? cuotaMensual(r.cft, amount, plazo) : null;
             const diff       = c != null ? c * plazo - bestCuota * plazo : null;
             const isFirst    = i === 0;
-            const isSelected = i === selectedIdx;
+            const isSelected = selected?.entidad === g.entidad;
+            const abierta    = expandida === g.entidad;
+            const otras      = g.ofertas.length - 1;
             return (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => available && setSelectedIdx(i)}
-                disabled={!available}
-                className={`w-full text-left flex flex-wrap items-center gap-3 rounded-xl border p-3.5 transition ${
-                  isSelected
-                    ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                    : available
-                      ? "border-border bg-card hover:border-primary/40"
-                      : "border-border bg-muted/30 opacity-40 cursor-not-allowed"
-                }`}
-              >
-                <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-bold ${
-                  isSelected
-                    ? "bg-[image:var(--gradient-primary)] text-primary-foreground"
-                    : "bg-muted text-muted-foreground"
-                }`}>
-                  {isFirst ? <Award className="h-4 w-4" /> : `#${i + 1}`}
-                </div>
-                <EntityLogo src={loanLogoUrl(r.entidad)} name={r.entidad} />
-                <div className="min-w-[150px] flex-1">
-                  <div className="text-sm font-semibold">{r.entidad}</div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1">
-                    {r.limiteVariable
-                      ? "límite variable"
-                      : [
-                          r.condiciones,
-                          `hasta ARS ${fmtArs(r.montoMax)}`,
-                          r.fecha && `informado ${fmtFecha(r.fecha)}`,
-                        ].filter(Boolean).join(" · ")}
+              <div key={g.entidad} className="space-y-1.5">
+                <div
+                  role="button"
+                  tabIndex={available ? 0 : -1}
+                  onClick={() => available && setSelectedId(r.id)}
+                  onKeyDown={(e) => { if (available && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setSelectedId(r.id); } }}
+                  aria-disabled={!available}
+                  className={`flex w-full flex-wrap items-center gap-3 rounded-xl border p-3.5 text-left transition ${
+                    isSelected
+                      ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                      : available
+                        ? "cursor-pointer border-border bg-card hover:border-primary/40"
+                        : "cursor-not-allowed border-border bg-muted/30 opacity-40"
+                  }`}
+                >
+                  <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-bold ${
+                    isSelected
+                      ? "bg-[image:var(--gradient-primary)] text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  }`}>
+                    {isFirst ? <Award className="h-4 w-4" /> : `#${i + 1}`}
+                  </div>
+                  <EntityLogo src={loanLogoUrl(g.entidad, r.logo)} name={g.entidad} />
+                  <div className="min-w-[150px] flex-1">
+                    <div className="flex items-center gap-1.5 text-sm font-semibold">
+                      {g.entidad}
+                      {r.tipo === "uva" && <UvaBadge />}
+                    </div>
+                    <div className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">{detalle(r)}</div>
+                    {otras > 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setExpandida(abierta ? null : g.entidad); }}
+                        className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+                      >
+                        <ChevronDown className={`h-3 w-3 transition ${abierta ? "rotate-180" : ""}`} />
+                        {abierta ? "Ocultar" : "Ver"} {otras} {otras === 1 ? "oferta más" : "ofertas más"}
+                      </button>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
+                    <div className="text-sm font-bold">{r.tna.toFixed(1)}%</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">CFT</div>
+                    <div className={`text-sm font-bold ${isFirst ? "text-success" : ""}`}>{r.cft.toFixed(1)}%</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Cuota</div>
+                    <div className="text-sm font-bold">{c != null ? `ARS ${fmtArs(c)}` : "—"}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">vs. mejor</div>
+                    <div className={`text-sm font-bold ${isFirst ? "text-success" : "text-destructive"}`}>
+                      {!available ? "Plazo no disponible" : isFirst ? "—" : `+ARS ${fmtArs(diff!)}`}
+                    </div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
-                  <div className="text-sm font-bold">{r.tna.toFixed(1)}%</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">CFT</div>
-                  <div className={`text-sm font-bold ${isFirst ? "text-success" : ""}`}>{r.cft.toFixed(1)}%</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Cuota</div>
-                  <div className="text-sm font-bold">
-                    {c != null ? `ARS ${fmtArs(c)}` : "—"}
+
+                {/* Otras ofertas de la misma entidad */}
+                {abierta && (
+                  <div className="ml-6 space-y-1.5 border-l-2 border-border pl-3">
+                    {g.ofertas.slice(1).map((o) => {
+                      const oAvail = plazo <= o.plazoMax;
+                      const oc     = oAvail ? cuotaMensual(o.cft, amount, plazo) : null;
+                      const oSel   = selected?.id === o.id;
+                      return (
+                        <button
+                          key={o.id}
+                          type="button"
+                          disabled={!oAvail}
+                          onClick={() => setSelectedId(o.id)}
+                          className={`flex w-full flex-wrap items-center gap-3 rounded-lg border px-3 py-2 text-left transition ${
+                            oSel
+                              ? "border-primary bg-primary/5"
+                              : oAvail
+                                ? "border-border bg-card hover:border-primary/40"
+                                : "cursor-not-allowed border-border bg-muted/30 opacity-40"
+                          }`}
+                        >
+                          <div className="flex min-w-[150px] flex-1 items-center gap-1.5 text-[11px] text-muted-foreground">
+                            {o.tipo === "uva" && <UvaBadge />}
+                            {detalle(o)}
+                          </div>
+                          <div className="text-xs font-semibold">TNA {o.tna.toFixed(1)}%</div>
+                          <div className="text-xs font-semibold">CFT {o.cft.toFixed(1)}%</div>
+                          <div className="w-28 text-right text-xs font-semibold">
+                            {oc != null ? `ARS ${fmtArs(oc)}` : "Plazo no disp."}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">vs. mejor</div>
-                  <div className={`text-sm font-bold ${isFirst ? "text-success" : "text-destructive"}`}>
-                    {!available
-                      ? "Plazo no disponible"
-                      : isFirst
-                        ? "—"
-                        : `+ARS ${fmtArs(diff!)}`}
-                  </div>
-                </div>
-              </button>
+                )}
+              </div>
             );
           })}
         </div>
 
+        {grupos.length > visibles && (
+          <div className="mt-4 flex justify-center">
+            <Button variant="outline" className="rounded-xl" onClick={() => setVisibles((v) => v + PAGE_SIZE)}>
+              Ver más ({grupos.length - visibles} {grupos.length - visibles === 1 ? "entidad restante" : "entidades restantes"})
+            </Button>
+          </div>
+        )}
+
         <div className="mt-5 flex items-start gap-3 rounded-xl bg-muted/50 p-3 text-xs text-muted-foreground">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <span>
-            Esta información tiene carácter exclusivamente informativo y no constituye asesoramiento financiero. Las tasas y CFT provienen del Régimen de Transparencia del BCRA y pueden no reflejar las condiciones vigentes. Verificá siempre directamente con cada entidad antes de contratar. Primus no recibe comisión de ninguna entidad.
+            Esta información tiene carácter exclusivamente informativo y no constituye asesoramiento financiero. Las tasas y CFT provienen del Régimen de Transparencia del BCRA; se muestran los préstamos personales de libre destino de bancos y compañías financieras informados en los últimos 90 días y pueden no reflejar las condiciones vigentes. Algunas ofertas requieren un perfil específico (por ejemplo, cobrar el sueldo en la entidad). Verificá siempre directamente con cada entidad antes de contratar. Primus no recibe comisión de ninguna entidad.
           </span>
         </div>
       </Card>

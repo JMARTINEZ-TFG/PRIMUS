@@ -5,10 +5,20 @@
 // TNA derivada de: TNA = 12 × ((1 + TEA/100)^(1/12) − 1) × 100
 // CFT publicado por el BCRA: incluye TNA + sellos, seguro de vida e ITF según jurisdicción.
 
+export type TipoEntidad =
+  | "Banco"
+  | "Compañía financiera"
+  | "Mutual / cooperativa"
+  | "Otra entidad no bancaria";
+
 export type LoanProduct = {
   id: string;
   entidad: string;
   tipo: "pesos" | "uva";
+  tipoEntidad?: TipoEntidad;
+  producto?: string; // nombre del producto informado por la entidad
+  perfil?: string;   // beneficiario: "Todos los beneficiarios", "Empleados públicos", …
+  logo?: string;     // logo publicado por el BCRA para la entidad
   tna: number;       // % TNA anual
   tea: number;       // % TEA anual
   cft: number;       // % CFT anual (Costo Financiero Total)
