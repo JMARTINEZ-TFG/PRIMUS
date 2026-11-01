@@ -1,10 +1,9 @@
 import { createFileRoute, Outlet, redirect, useRouterState } from "@tanstack/react-router";
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { LogOut, Menu } from "lucide-react";
-import { getCurrentUser, logoutUser } from "@/lib/api/auth.functions";
-import { useNavigate } from "@tanstack/react-router";
-import { toast } from "sonner";
+import { Menu } from "lucide-react";
+import { getCurrentUser } from "@/lib/api/auth.functions";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export const Route = createFileRoute("/_app")({
   beforeLoad: async () => {
@@ -29,21 +28,15 @@ function AppLayout() {
   const { user } = Route.useRouteContext();
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const meta = titles[pathname] ?? { title: "Primus", subtitle: "" };
-  const navigate = useNavigate();
 
   const initials = user.email.slice(0, 2).toUpperCase();
-
-  const handleLogout = async () => {
-    await logoutUser();
-    toast.success("Sesión cerrada.");
-    navigate({ to: "/login" });
-  };
 
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background">
         <AppSidebar />
-        <div className="flex flex-1 flex-col">
+        {/* min-w-0: sin esto el contenido ancho (p. ej. tablas) estira la página en celular */}
+        <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md md:px-6">
             <MenuToggle />
             <div className="hidden flex-col md:flex">
@@ -57,13 +50,7 @@ function AppLayout() {
               >
                 {initials}
               </div>
-              <button
-                onClick={handleLogout}
-                title="Cerrar sesión"
-                className="grid h-9 w-9 place-items-center rounded-xl border border-border bg-card transition hover:bg-muted"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
+              <ThemeToggle />
             </div>
           </header>
           <main className="flex-1 px-4 py-6 md:px-8 md:py-8">

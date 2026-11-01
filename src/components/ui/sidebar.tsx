@@ -192,7 +192,7 @@ const Sidebar = React.forwardRef<
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
-            className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+            className="h-dvh w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -204,7 +204,9 @@ const Sidebar = React.forwardRef<
               <SheetTitle>Sidebar</SheetTitle>
               <SheetDescription>Displays the mobile sidebar.</SheetDescription>
             </SheetHeader>
-            <div className="flex h-full w-full flex-col">{children}</div>
+            {/* h-dvh (arriba) usa la altura visible real: en Safari para iPhone h-full
+                incluye la zona bajo la barra del navegador y cortaba "Cerrar sesión" */}
+            <div className="flex h-full w-full flex-col pb-[env(safe-area-inset-bottom)]">{children}</div>
           </SheetContent>
         </Sheet>
       );
