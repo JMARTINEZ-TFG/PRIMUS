@@ -81,18 +81,6 @@ export const deleteObligation = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const extractObligation = createServerFn({ method: "POST" })
-  .inputValidator(z.object({
-    fileBase64: z.string().min(1),
-    mediaType: z.string().min(1),
-  }))
-  .handler(async ({ data }) => {
-    const session = await getSession();
-    if (!session) throw new Error("UNAUTHORIZED");
-    const { extractFromDocument } = await import("../ocr.server");
-    return extractFromDocument(data.fileBase64, data.mediaType);
-  });
-
 export const toggleObligation = createServerFn({ method: "POST" })
   .inputValidator(z.object({
     id_obligacion: z.number().int().positive(),

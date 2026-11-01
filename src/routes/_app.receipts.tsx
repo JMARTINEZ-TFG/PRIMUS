@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Plus, Trash2, CheckCircle2, Clock, XCircle, AlertCircle, Receipt,
   Loader2, ScanLine, PenLine, FileSearch, AlertTriangle,
@@ -13,14 +13,22 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import {
-  getObligations, addObligation, deleteObligation, toggleObligation, extractObligation,
+  getObligations, addObligation, deleteObligation, toggleObligation,
   computeEstado, formatObligationDate,
   type Obligation, type EstadoObligation,
 } from "@/lib/api/obligations.functions";
+import { readDocumentText, type ReadProgress } from "@/lib/ocr/read-document";
+import { extractFields } from "@/lib/ocr/extract-fields";
+
+const PROGRESS_LABEL: Record<ReadProgress, string> = {
+  "pdf":         "Leyendo el texto del PDF…",
+  "ocr-loading": "Preparando el reconocimiento de texto (OCR)… la primera vez puede demorar unos segundos.",
+  "ocr":         "Reconociendo el texto de la imagen…",
+};
 
 export const Route = createFileRoute("/_app/receipts")({
   loader: async () => {
@@ -33,6 +41,25 @@ export const Route = createFileRoute("/_app/receipts")({
 function formatMonto(s: string): string {
   const n = parseFloat(s);
   return `ARS ${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// ── Campo de monto: el texto se maneja en formato argentino ("57.437,08") ──────
+
+function montoToInput(n: number): string {
+  return n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Mientras se escribe: solo dígitos y una coma decimal (máx. 2 decimales);
+// los puntos de miles se agregan automáticamente.
+function normalizeMontoInput(value: string): string {
+  const [intRaw, ...decParts] = value.replace(/[^\d,]/g, "").split(",");
+  const int = intRaw.replace(/^0+(?=\d)/, "");
+  const intFmt = int ? Number(int).toLocaleString("es-AR") : decParts.length ? "0" : "";
+  return decParts.length ? `${intFmt},${decParts.join("").slice(0, 2)}` : intFmt;
+}
+
+function parseMontoInput(s: string): number {
+  return parseFloat(s.replace(/\./g, "").replace(",", "."));
 }
 
 function EstadoBadge({ estado }: { estado: EstadoObligation }) {
@@ -59,12 +86,21 @@ function Obligations() {
   const [step, setStep]           = useState<"choice" | "form" | "duplicate">("choice");
   const [saving, setSaving]       = useState(false);
   const [scanning, setScanning]   = useState(false);
+  const [scanStage, setScanStage] = useState<ReadProgress | null>(null);
   const [emisor, setEmisor]       = useState("");
   const [monto, setMonto]         = useState("");
   const [fecha, setFecha]         = useState("");
   const [dupMatch, setDupMatch]   = useState<Obligation | null>(null);
   const [dupSource, setDupSource] = useState<"ocr" | "manual">("ocr");
   const [forceAdd, setForceAdd]   = useState(false);
+
+  // Cola de comprobantes subidos juntos: se revisan de a uno ("1 de n")
+  const [queue, setQueue]           = useState<File[]>([]);
+  const [queueIndex, setQueueIndex] = useState(0);
+  const [queueSaved, setQueueSaved] = useState(0);
+  const scanToken                   = useRef(0); // invalida lecturas en curso al cerrar
+  const inQueue    = queue.length > 0;
+  const queueLabel = queue.length > 1 ? ` (${queueIndex + 1} de ${queue.length})` : "";
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const [payingOb, setPayingOb]   = useState<Obligation | null>(null);
@@ -92,34 +128,90 @@ function Obligations() {
 
   // ── OCR ──────────────────────────────────────────────────────────────────────
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("El archivo supera los 5 MB.");
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (fileRef.current) fileRef.current.value = "";
+    if (files.length === 0) return;
+
+    const tooBig = files.filter((f) => f.size > 5 * 1024 * 1024);
+    if (tooBig.length > 0) {
+      toast.error(
+        tooBig.length === 1
+          ? `"${tooBig[0].name}" supera los 5 MB y no se cargará.`
+          : `${tooBig.length} archivos superan los 5 MB y no se cargarán.`,
+      );
+    }
+    const valid = files.filter((f) => f.size <= 5 * 1024 * 1024);
+    if (valid.length === 0) return;
+
+    setQueue(valid);
+    setQueueIndex(0);
+    setQueueSaved(0);
+    setOpen(true);
+  };
+
+  // Cada comprobante de la cola se lee cuando le toca (así los duplicados se
+  // comparan también contra los guardados antes en la misma tanda)
+  useEffect(() => {
+    const file = queue[queueIndex];
+    if (file) void processFile(file);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue, queueIndex]);
+
+  const advanceQueue = (saved: boolean) => {
+    const savedCount = queueSaved + (saved ? 1 : 0);
+    if (queueIndex + 1 < queue.length) {
+      setQueueSaved(savedCount);
+      setQueueIndex((i) => i + 1);
       return;
     }
+    if (queue.length > 1) {
+      toast.success(`${savedCount} de ${queue.length} obligaciones registradas.`);
+    } else if (saved) {
+      toast.success("Obligación registrada.");
+    }
+    closeQueue();
+  };
 
+  const closeQueue = () => {
+    scanToken.current++;
+    setQueue([]);
+    setQueueIndex(0);
+    setQueueSaved(0);
+    setScanning(false);
+    setScanStage(null);
+    setOpen(false);
+    reset();
+  };
+
+  const handleDialogChange = (v: boolean) => {
+    if (v) { setOpen(true); return; }
+    if (inQueue) {
+      const remaining = queue.length - queueIndex - 1;
+      if (remaining > 0) {
+        toast.info(`Se descartaron ${remaining} comprobante${remaining !== 1 ? "s" : ""} sin revisar.`);
+      }
+      closeQueue();
+      return;
+    }
+    setOpen(false);
+    reset();
+  };
+
+  const processFile = async (file: File) => {
+    const token = ++scanToken.current;
     resetFields();
     setStep("form");
     setScanning(true);
-    setOpen(true);
 
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(",")[1]); // quitar "data:...;base64,"
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const result = await extractObligation({ data: { fileBase64: base64, mediaType: file.type } });
+      // El documento se procesa en el navegador: no se envía a ningún servidor
+      const text = await readDocumentText(file, (p) => token === scanToken.current && setScanStage(p));
+      if (token !== scanToken.current) return;
+      const result = extractFields(text);
 
       const extractedEmisor = result.emisor ?? "";
-      const extractedMonto  = result.monto != null ? String(result.monto) : "";
+      const extractedMonto  = result.monto != null ? montoToInput(result.monto) : "";
       const extractedFecha  = result.fecha_vencimiento ?? "";
 
       setEmisor(extractedEmisor);
@@ -143,10 +235,13 @@ function Obligations() {
         }
       }
     } catch (err) {
+      if (token !== scanToken.current) return;
       toast.error(err instanceof Error ? err.message : "Error al procesar el archivo.");
     } finally {
-      setScanning(false);
-      if (fileRef.current) fileRef.current.value = "";
+      if (token === scanToken.current) {
+        setScanning(false);
+        setScanStage(null);
+      }
     }
   };
 
@@ -154,7 +249,7 @@ function Obligations() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    const montoNum = parseFloat(monto);
+    const montoNum = parseMontoInput(monto);
     if (isNaN(montoNum) || montoNum <= 0) { toast.error("Ingresá un monto válido."); return; }
     if (!forceAdd) {
       const dup = findDuplicateByAmountAndDate(montoNum, fecha);
@@ -164,9 +259,13 @@ function Obligations() {
     try {
       await addObligation({ data: { emisor, monto: montoNum, fecha_vencimiento: fecha } });
       await router.invalidate();
-      setOpen(false);
-      reset();
-      toast.success("Obligación registrada.");
+      if (inQueue) {
+        advanceQueue(true);
+      } else {
+        setOpen(false);
+        reset();
+        toast.success("Obligación registrada.");
+      }
     } catch {
       toast.error("No se pudo guardar. Intentá de nuevo.");
     } finally {
@@ -218,6 +317,8 @@ function Obligations() {
 
   const pendientes     = obligations.filter((o) => !o.pagado);
   const totalPendiente = pendientes.reduce((s, o) => s + parseFloat(o.monto), 0);
+  const pagadas        = obligations.filter((o) => o.pagado);
+  const totalPagado    = pagadas.reduce((s, o) => s + parseFloat(o.monto), 0);
 
   return (
     <div className="space-y-6">
@@ -227,19 +328,31 @@ function Obligations() {
         ref={fileRef}
         type="file"
         accept=".jpg,.jpeg,.png,.pdf"
+        multiple
         className="hidden"
         onChange={handleFileChange}
       />
 
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          {pendientes.length} obligacion{pendientes.length !== 1 ? "es" : ""} ·{" "}
-          <span className="font-medium text-foreground">
-            ARS {totalPendiente.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-          </span>{" "}
-          pendientes de pago
-        </p>
+        <div className="space-y-0.5 text-sm text-muted-foreground">
+          <p>
+            {pendientes.length === 1
+              ? "1 obligación pendiente"
+              : `${pendientes.length} obligaciones pendientes`}{" "}
+            ·{" "}
+            <span className="font-medium text-foreground">
+              ARS {totalPendiente.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </p>
+          <p>
+            {pagadas.length === 1 ? "1 obligación pagada" : `${pagadas.length} obligaciones pagadas`}{" "}
+            ·{" "}
+            <span className="font-medium text-success">
+              ARS {totalPagado.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </p>
+        </div>
         <Button onClick={() => { reset(); setOpen(true); }} className="rounded-xl shadow-[var(--shadow-glow)]">
           <Plus className="mr-1 h-4 w-4" /> Nueva obligación
         </Button>
@@ -267,10 +380,10 @@ function Obligations() {
               <TableHeader>
                 <TableRow className="bg-muted/40">
                   <TableHead>Emisor</TableHead>
-                  <TableHead className="text-right">Monto</TableHead>
-                  <TableHead className="hidden md:table-cell">Vencimiento</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="hidden lg:table-cell">Fecha pago</TableHead>
+                  <TableHead className="text-center">Monto</TableHead>
+                  <TableHead className="hidden text-center md:table-cell">Vencimiento</TableHead>
+                  <TableHead className="text-center">Estado</TableHead>
+                  <TableHead className="hidden text-center lg:table-cell">Fecha pago</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -280,12 +393,12 @@ function Obligations() {
                   return (
                     <TableRow key={ob.id_obligacion}>
                       <TableCell className="font-medium">{ob.emisor}</TableCell>
-                      <TableCell className="text-right font-semibold">{formatMonto(ob.monto)}</TableCell>
-                      <TableCell className="hidden text-muted-foreground md:table-cell">
+                      <TableCell className="text-center font-semibold">{formatMonto(ob.monto)}</TableCell>
+                      <TableCell className="hidden text-center text-muted-foreground md:table-cell">
                         {formatObligationDate(ob.fecha_vencimiento)}
                       </TableCell>
-                      <TableCell><EstadoBadge estado={estado} /></TableCell>
-                      <TableCell className="hidden text-muted-foreground lg:table-cell">
+                      <TableCell className="text-center"><EstadoBadge estado={estado} /></TableCell>
+                      <TableCell className="hidden text-center text-muted-foreground lg:table-cell">
                         {ob.fecha_pago ? formatObligationDate(ob.fecha_pago) : "—"}
                       </TableCell>
                       <TableCell>
@@ -310,16 +423,28 @@ function Obligations() {
                   );
                 })}
               </TableBody>
+              <TableFooter>
+                <TableRow className="hover:bg-transparent">
+                  <TableCell className="font-semibold">Total</TableCell>
+                  <TableCell className="text-center font-bold">
+                    ARS {(totalPendiente + totalPagado).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell" />
+                  <TableCell />
+                  <TableCell className="hidden lg:table-cell" />
+                  <TableCell />
+                </TableRow>
+              </TableFooter>
             </Table>
           </div>
         </Card>
       )}
 
       {/* Dialog */}
-      <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
+      <Dialog open={open} onOpenChange={handleDialogChange}>
         <DialogContent className="rounded-2xl sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Nueva obligación</DialogTitle>
+            <DialogTitle>Nueva obligación{queueLabel}</DialogTitle>
             <DialogDescription>
               {step === "choice"    ? "¿Cómo querés registrar la obligación?" :
              step === "duplicate" ? "Revisá antes de continuar." :
@@ -351,7 +476,7 @@ function Obligations() {
                 </div>
                 <div>
                   <div className="text-sm font-semibold">Subir comprobante</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">JPG, PNG o PDF · máx. 5 MB</div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">Uno o varios · JPG, PNG o PDF · máx. 5 MB</div>
                 </div>
               </button>
             </div>
@@ -380,8 +505,12 @@ function Obligations() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 rounded-xl" onClick={reset}>
-                  Cancelar
+                <Button
+                  variant="outline"
+                  className="flex-1 rounded-xl"
+                  onClick={inQueue ? () => advanceQueue(false) : reset}
+                >
+                  {queue.length > 1 ? "Omitir" : "Cancelar"}
                 </Button>
                 <Button
                   className="flex-1 rounded-xl"
@@ -399,7 +528,9 @@ function Obligations() {
               <div className="flex flex-col items-center gap-3 py-8">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <p className="text-sm font-medium">Analizando documento…</p>
-                <p className="text-xs text-muted-foreground">Extrayendo emisor, monto y fecha de vencimiento.</p>
+                <p className="text-center text-xs text-muted-foreground">
+                  {scanStage ? PROGRESS_LABEL[scanStage] : "Extrayendo emisor, monto y fecha de vencimiento."}
+                </p>
               </div>
             ) : (
               <form onSubmit={handleAdd} className="mt-2 space-y-3">
@@ -418,13 +549,10 @@ function Obligations() {
                   <Input
                     className="mt-1.5 h-10 rounded-xl"
                     type="text"
-                    inputMode="numeric"
-                    placeholder="Ej: 24.580"
-                    value={monto ? Math.round(parseFloat(monto) || 0).toLocaleString("es-AR") : ""}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/\./g, "").replace(/\D/g, "");
-                      setMonto(raw);
-                    }}
+                    inputMode="decimal"
+                    placeholder="Ej: 24.580,50"
+                    value={monto}
+                    onChange={(e) => setMonto(normalizeMontoInput(e.target.value))}
                     required
                   />
                 </div>
@@ -443,9 +571,9 @@ function Obligations() {
                     type="button"
                     variant="outline"
                     className="rounded-xl"
-                    onClick={() => setStep("choice")}
+                    onClick={inQueue ? () => advanceQueue(false) : () => setStep("choice")}
                   >
-                    Volver
+                    {queue.length > 1 ? "Omitir" : inQueue ? "Cancelar" : "Volver"}
                   </Button>
                   <Button
                     type="submit"

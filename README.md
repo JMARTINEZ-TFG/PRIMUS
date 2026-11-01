@@ -30,7 +30,7 @@ A fin de acceder a la plataforma, se proporciona el siguiente usuario de prueba 
 - **💸 Gestión de Cuentas y Obligaciones** — Posibilita el registro de cuentas, ingresos recurrentes y obligaciones, a fin de obtener una visión integral de la situación financiera del usuario.
 - **🏦 Comparador de Opciones de Financiación** — Préstamos personales de las principales entidades, ordenados por CFT, a partir de los datos del Régimen de Transparencia del BCRA.
 - **📈 Comparador de Opciones de Inversión** — Consulta de tasas de referencia del mercado para Plazos Fijos, Cuentas Remuneradas y Fondos Comunes de Inversión.
-- **🧾 Digitalización de Comprobantes (OCR)** — Permite cargar la imagen de un comprobante y extraer automáticamente sus datos.
+- **🧾 Digitalización de Comprobantes (OCR)** — Permite cargar un comprobante (PDF o imagen) y extraer automáticamente emisor, monto y vencimiento. El procesamiento se realiza en el navegador con pdf.js y Tesseract OCR, sin enviar el documento a servicios externos.
 - **🔐 Autenticación Segura** — Registro con verificación por correo electrónico, recuperación de contraseña, bloqueo por intentos fallidos y sesiones firmadas mediante JWT.
 
 ---
@@ -41,7 +41,7 @@ A fin de acceder a la plataforma, se proporciona el siguiente usuario de prueba 
 
 - Node.js ≥ 20
 - Una base de datos PostgreSQL (por ejemplo, [Neon](https://neon.tech))
-- Credenciales (API keys) de los servicios Resend, OCR y Prometeo (opcionales según la funcionalidad a utilizar)
+- Credenciales (API keys) de los servicios Resend y Prometeo (opcionales según la funcionalidad a utilizar)
 
 ### Pasos
 
@@ -71,7 +71,6 @@ npm run dev
 | `JWT_SECRET`                                          | Secreto para firmar las sesiones JWT                                                    |
 | `APP_URL`                                             | URL pública de la app (ej. `https://primus-tfg.vercel.app` o `https://localhost:8000/`) |
 | `RESEND_API_KEY`                                      | API key de Resend (envío de emails)                                                     |
-| `OCR_API_KEY`                                         | API key del servicio de OCR                                                             |
 | `PROMETEO_API_KEY` / `PROMETEO_ENV` / `PROMETEO_MOCK` | Integración bancaria Prometeo                                                           |
 
 ---
