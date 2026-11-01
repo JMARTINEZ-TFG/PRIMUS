@@ -10,6 +10,10 @@ import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/_app/cashflow")({
+  // Las proyecciones viven en el localStorage del navegador: el servidor solo trae
+  // los datos (obligaciones) y la pantalla se dibuja en el cliente, para que no
+  // difiera de lo que renderizaría el servidor (sin acceso a localStorage).
+  ssr: "data-only",
   loader: async () => {
     const obligations = await getObligations();
     return { obligations };
@@ -20,8 +24,24 @@ export const Route = createFileRoute("/_app/cashflow")({
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type Range        = "1m" | "3m" | "6m" | "1y";
-type IncomeSource = { id: string; nombre: string; importe: number };
-type EgresoItem   = { id: string; emisor: string; monto: string };
+// Ingresos y egresos que se proyectan a varios meses. "desde" (YYYY-MM) indica el
+// primer mes en que aplican; sin "desde" aplican a todos los meses.
+type IncomeSource = { id: string; nombre: string; importe: number; desde?: string };
+type EgresoItem   = { id: string; emisor: string; monto: string; desde?: string };
+
+function appliesTo(item: { desde?: string }, monthKey: string): boolean {
+  return !item.desde || monthKey >= item.desde;
+}
+
+// Aplica una transformación a cada mes ya inicializado
+function mapMonths(
+  data: Record<string, MonthData>,
+  fn: (m: MonthData) => MonthData,
+): Record<string, MonthData> {
+  return Object.fromEntries(
+    Object.entries(data).map(([k, m]) => [k, m?.initialized ? fn(m) : m]),
+  );
+}
 
 type MonthIngreso = { id: string; nombre: string; importe: number };
 type MonthEgreso  = { id: string; concepto: string; importe: number };
@@ -61,10 +81,10 @@ function monthFullLabel(key: string): string {
 
 // Columnas de las subtarjetas mensuales según el período elegido
 const SUB_GRID: Record<Range, string> = {
-  "1m": "sm:grid-cols-2 lg:grid-cols-3",
+  "1m": "sm:grid-cols-3",
   "3m": "sm:grid-cols-3",
   "6m": "sm:grid-cols-3",
-  "1y": "sm:grid-cols-3 xl:grid-cols-4",
+  "1y": "sm:grid-cols-3",
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -81,13 +101,18 @@ function fmtNum(n: number): string {
 }
 
 function initEgresosFromStorage(obligations: Obligation[], importedIds: Set<string>): EgresoItem[] {
-  const overrides = lsGet<Record<string, { monto: string }>>(LS_EGRESO_OVERRIDES, {});
+  const overrides = lsGet<Record<string, { monto: string; desde?: string }>>(LS_EGRESO_OVERRIDES, {});
   const manual    = lsGet<EgresoItem[]>(LS_EGRESO_MANUAL, []);
   const dbItems   = obligations
     .filter(o => importedIds.has(String(o.id_obligacion)))
     .map(o => {
       const id = String(o.id_obligacion);
-      return { id, emisor: o.emisor, monto: overrides[id]?.monto ?? String(Math.round(parseFloat(o.monto))) };
+      return {
+        id,
+        emisor: o.emisor,
+        monto:  overrides[id]?.monto ?? String(Math.round(parseFloat(o.monto))),
+        desde:  overrides[id]?.desde,
+      };
     });
   return [...dbItems, ...manual];
 }
@@ -137,7 +162,7 @@ function AddButton({ onClick, title, small = false, tone }: {
 type SubcardKind = "ing" | "egr" | "saldo";
 
 function MonthSubcards({
-  kind, range, months, monthData, setMonthData, onAdd,
+  kind, range, months, monthData, setMonthData, onAdd, open = false,
 }: {
   kind:         SubcardKind;
   range:        Range;
@@ -145,9 +170,8 @@ function MonthSubcards({
   monthData:    Record<string, MonthData>;
   setMonthData: React.Dispatch<React.SetStateAction<Record<string, MonthData>>>;
   onAdd:        (target: AddTarget) => void;
+  open?:        boolean; // lo controla la flecha de la tarjeta principal
 }) {
-  const [openState, setOpenState] = useState<Record<string, boolean>>({});
-  const toggle = (key: string) => setOpenState(p => ({ ...p, [key]: !p[key] }));
 
   const updateIngItem = (key: string, id: string, field: keyof MonthIngreso, raw: string) =>
     setMonthData(p => ({
@@ -183,7 +207,6 @@ function MonthSubcards({
         const data = monthData[m.key];
         const ing  = data?.ingresos.reduce((s, x) => s + x.importe, 0) ?? 0;
         const egr  = data?.egresos.reduce((s, x) => s + x.importe, 0) ?? 0;
-        const open = openState[m.key] ?? false;
 
         // ── Saldo: solo el resultado del mes ──
         if (kind === "saldo") {
@@ -194,8 +217,8 @@ function MonthSubcards({
               ing === 0 ? "border-border bg-card" :
               pos ? "border-success/30 bg-card" : "border-destructive/30 bg-card"
             }`}>
-              <div className="text-xs font-semibold text-foreground">{m.label}</div>
-              <div className={`mt-1 text-lg font-bold tracking-tight ${
+              <div className="flex h-8 items-center text-xs font-semibold text-foreground">{m.label}</div>
+              <div className={`mt-3 flex h-8 items-center text-lg font-bold tracking-tight ${
                 ing === 0 ? "text-muted-foreground" : pos ? "text-success" : "text-destructive"
               }`}>
                 {ing > 0 ? `${pos ? "+" : "−"}${fmtArs(saldo)}` : "—"}
@@ -212,19 +235,14 @@ function MonthSubcards({
 
         return (
           <div key={m.key} className="rounded-xl border border-border bg-card p-3">
-            <div className="flex items-center justify-between">
+            <div className="flex h-8 items-center justify-between">
               <span className="text-xs font-semibold text-foreground">{m.label}</span>
               <div className="flex items-center gap-1">
                 <AddButton small
                   title={`Agregar ${isIng ? "ingreso" : "egreso"} a ${m.label}`}
-                  onClick={() => onAdd({ kind, monthKey: m.key, label: m.label })} />
-                <button onClick={() => toggle(m.key)} title={open ? "Ocultar detalle" : "Editar el mes"}
-                  className="grid h-6 w-6 place-items-center rounded-md bg-muted text-muted-foreground transition hover:bg-muted-foreground/15 hover:text-foreground">
-                  <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
-                </button>
-              </div>
+                  onClick={() => onAdd({ kind, monthKey: m.key, label: m.label })} />              </div>
             </div>
-            <div className={`mt-1 text-lg font-bold tracking-tight ${
+            <div className={`mt-3 flex h-8 items-center text-lg font-bold tracking-tight ${
               total === 0 ? "text-muted-foreground" : isIng ? "text-success" : "text-destructive"
             }`}>
               {total > 0 ? fmtArs(total) : "—"}
@@ -232,15 +250,17 @@ function MonthSubcards({
 
             {open && (
               items.length > 0 ? (
-                <div className="mt-3 space-y-1.5">
+                <div className="mt-4 space-y-1.5">
                   {items.map(item => (
-                    <div key={item.id} className="flex items-center gap-1.5 rounded-lg bg-muted/40 px-2 py-1.5">
-                      <Input className="h-7 min-w-0 flex-1 rounded-lg text-xs font-medium"
+                    <div key={item.id} className="flex items-center gap-1.5 rounded-xl bg-muted/40 px-2 py-1.5">
+                      {/* Mismo estilo que la lista de la tarjeta principal: el nombre se ve
+                          como texto y se edita al hacer clic */}
+                      <input className="h-7 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1 text-xs font-medium outline-none transition hover:border-border focus:border-border focus:bg-background"
                         value={item.nombre}
                         onChange={e => isIng
                           ? updateIngItem(m.key, item.id, "nombre", e.target.value)
                           : updateEgrItem(m.key, item.id, "concepto", e.target.value)} />
-                      <Input className="h-7 w-24 shrink-0 rounded-lg text-right text-xs"
+                      <input className="h-7 w-24 shrink-0 rounded-lg border border-border bg-background px-2 text-right text-xs"
                         type="text" inputMode="numeric"
                         value={item.importe ? fmtNum(item.importe) : ""}
                         onChange={e => isIng
@@ -254,7 +274,7 @@ function MonthSubcards({
                   ))}
                 </div>
               ) : (
-                <p className="mt-3 text-center text-xs text-muted-foreground">Sin {isIng ? "ingresos" : "egresos"} este mes.</p>
+                <p className="mt-4 text-center text-xs text-muted-foreground">Sin {isIng ? "ingresos" : "egresos"} este mes.</p>
               )
             )}
           </div>
@@ -282,9 +302,9 @@ function CashFlow() {
     return initEgresosFromStorage(obligations, imported);
   });
   useEffect(() => {
-    const overrides: Record<string, { monto: string }> = {};
+    const overrides: Record<string, { monto: string; desde?: string }> = {};
     egresoItems.forEach(e => {
-      if (!e.id.startsWith("m_")) overrides[e.id] = { monto: e.monto };
+      if (!e.id.startsWith("m_")) overrides[e.id] = { monto: e.monto, desde: e.desde };
     });
     lsSet(LS_EGRESO_OVERRIDES, overrides);
     lsSet(LS_EGRESO_MANUAL, egresoItems.filter(e => e.id.startsWith("m_")));
@@ -305,11 +325,11 @@ function CashFlow() {
         if (!monthD?.initialized) { next[key] = monthD; continue; }
         const existingIngIds = new Set(monthD.ingresos.map(i => i.id));
         const newIngresos = sources
-          .filter(s => !existingIngIds.has(s.id))
+          .filter(s => !existingIngIds.has(s.id) && appliesTo(s, key))
           .map(s => ({ id: s.id, nombre: s.nombre, importe: s.importe }));
         const existingEgrIds = new Set(monthD.egresos.map(e => e.id));
         const newEgresos = egresoItems
-          .filter(e => !existingEgrIds.has(e.id))
+          .filter(e => !existingEgrIds.has(e.id) && appliesTo(e, key))
           .map(e => ({ id: e.id, concepto: e.emisor, importe: parseFloat(e.monto) || 0 }));
         if (newIngresos.length > 0 || newEgresos.length > 0) {
           next[key] = {
@@ -339,8 +359,10 @@ function CashFlow() {
       toInit.forEach(m => {
         next[m.key] = {
           initialized: true,
-          ingresos: sources.map(s => ({ id: s.id, nombre: s.nombre, importe: s.importe })),
-          egresos:  egresoItems.map(e => ({ id: e.id, concepto: e.emisor, importe: parseFloat(e.monto) || 0 })),
+          ingresos: sources.filter(s => appliesTo(s, m.key))
+            .map(s => ({ id: s.id, nombre: s.nombre, importe: s.importe })),
+          egresos:  egresoItems.filter(e => appliesTo(e, m.key))
+            .map(e => ({ id: e.id, concepto: e.emisor, importe: parseFloat(e.monto) || 0 })),
         };
       });
       return next;
@@ -354,6 +376,7 @@ function CashFlow() {
   // o solo a un mes
   const [addTarget, setAddTarget] = useState<AddTarget | null>(null);
   const [addStep, setAddStep]     = useState<"choice" | "manual" | "import">("manual");
+  const [proyectar, setProyectar] = useState(true);
   const [fNombre, setFNombre]     = useState("");
   const [fImporte, setFImporte]   = useState("");
 
@@ -381,20 +404,33 @@ function CashFlow() {
     o => !importedDbIds.includes(String(o.id_obligacion))
   );
 
-  const updateEgresoMonto = (id: string, raw: string) =>
+  // Editar un importe en la lista de la tarjeta principal lo actualiza también en
+  // cada mes que tiene ese concepto (si no, el total y las subtarjetas no cambiarían)
+  const updateEgresoMonto = (id: string, raw: string) => {
     setEgresoItems(p => p.map(e => e.id === id ? { ...e, monto: raw } : e));
+    setMonthData(p => mapMonths(p, m => ({
+      ...m, egresos: m.egresos.map(e => e.id === id ? { ...e, importe: Number(raw) || 0 } : e),
+    })));
+  };
+  const updateSourceImporte = (id: string, raw: string) => {
+    setSources(p => p.map(s => s.id === id ? { ...s, importe: Number(raw) || 0 } : s));
+    setMonthData(p => mapMonths(p, m => ({
+      ...m, ingresos: m.ingresos.map(i => i.id === id ? { ...i, importe: Number(raw) || 0 } : i),
+    })));
+  };
   const removeEgreso = (id: string) => {
     setEgresoItems(p => p.filter(e => e.id !== id));
     if (!id.startsWith("m_")) setImportedDbIds(p => p.filter(i => i !== id));
   };
 
-  const importObligacion = (o: Obligation) => {
+  const importObligacion = (o: Obligation, desde?: string) => {
     const id = String(o.id_obligacion);
     const overrides = lsGet<Record<string, { monto: string }>>(LS_EGRESO_OVERRIDES, {});
     setEgresoItems(p => [...p, {
       id,
       emisor: o.emisor,
       monto:  overrides[id]?.monto ?? String(Math.round(parseFloat(String(o.monto)))),
+      desde,
     }]);
     setImportedDbIds(p => [...p, id]);
   };
@@ -405,14 +441,33 @@ function CashFlow() {
     setAddTarget(target);
     setAddStep(target.kind === "egr" ? "choice" : "manual");
     setFNombre(""); setFImporte("");
+    // Desde la tarjeta principal se proyecta por defecto; desde un mes, no
+    setProyectar(target.monthKey === null);
   };
   const closeAdd = () => setAddTarget(null);
 
-  // Obligaciones que todavía no están en el destino (todos los meses o el mes elegido)
-  const importables = !addTarget ? [] : addTarget.monthKey === null
+  // Mes desde el que aplica lo que se agrega: el de la subtarjeta o el primero de la proyección
+  const startKey   = addTarget?.monthKey ?? months[0].key;
+  const startLabel = addTarget?.monthKey ? addTarget.label : months[0].label;
+  // Alcance según "Proyectar": todos los meses, desde un mes en adelante o solo ese mes
+  const alcance = !proyectar ? startLabel
+    : addTarget?.monthKey === null ? "todos los meses"
+    : `desde ${startLabel}`;
+  const alcanceAviso = proyectar && addTarget?.monthKey !== null ? `${alcance} en adelante` : `a ${alcance}`;
+
+  const proyectarCheck = (
+    <label className="flex cursor-pointer items-center gap-2 text-sm">
+      <input type="checkbox" className="h-4 w-4 cursor-pointer accent-primary"
+        checked={proyectar} onChange={e => setProyectar(e.target.checked)} />
+      Proyectar a los meses siguientes
+    </label>
+  );
+
+  // Obligaciones que todavía no están en el destino
+  const importables = !addTarget ? [] : proyectar
     ? availableObligations
     : obligations.filter(o =>
-        !(monthData[addTarget.monthKey!]?.egresos ?? []).some(e => e.id === String(o.id_obligacion)));
+        !(monthData[startKey]?.egresos ?? []).some(e => e.id === String(o.id_obligacion)));
 
   const handleAddManual = () => {
     if (!addTarget) return;
@@ -420,32 +475,34 @@ function CashFlow() {
     const nombre = fNombre.trim();
     if (!nombre || isNaN(imp) || imp <= 0) return;
     const { kind, monthKey } = addTarget;
-    if (monthKey === null) {
-      if (kind === "ing") setSources(p => [...p, { id: `${Date.now()}`, nombre, importe: imp }]);
-      else setEgresoItems(p => [...p, { id: `m_${Date.now()}`, emisor: nombre, monto: String(imp) }]);
+    if (proyectar) {
+      // Proyectado: desde la tarjeta principal aplica a todos los meses; desde un mes,
+      // a ese mes y los siguientes
+      const desde = monthKey ?? undefined;
+      if (kind === "ing") setSources(p => [...p, { id: `${Date.now()}`, nombre, importe: imp, desde }]);
+      else setEgresoItems(p => [...p, { id: `m_${Date.now()}`, emisor: nombre, monto: String(imp), desde }]);
     } else {
       setMonthData(p => ({
         ...p,
-        [monthKey]: kind === "ing"
-          ? { ...p[monthKey], ingresos: [...p[monthKey].ingresos, { id: `${Date.now()}`, nombre, importe: imp }] }
-          : { ...p[monthKey], egresos:  [...p[monthKey].egresos,  { id: `${Date.now()}`, concepto: nombre, importe: imp }] },
+        [startKey]: kind === "ing"
+          ? { ...p[startKey], ingresos: [...p[startKey].ingresos, { id: `${Date.now()}`, nombre, importe: imp }] }
+          : { ...p[startKey], egresos:  [...p[startKey].egresos,  { id: `${Date.now()}`, concepto: nombre, importe: imp }] },
       }));
     }
-    toast.success(`${kind === "ing" ? "Ingreso" : "Egreso"} agregado${monthKey === null ? " a todos los meses" : ` a ${addTarget.label}`}.`);
+    toast.success(`${kind === "ing" ? "Ingreso" : "Egreso"} agregado ${alcanceAviso}.`);
     closeAdd();
   };
 
   const handleImport = (o: Obligation) => {
     if (!addTarget) return;
-    const { monthKey } = addTarget;
-    if (monthKey === null) {
-      importObligacion(o);
+    if (proyectar) {
+      importObligacion(o, addTarget.monthKey ?? undefined);
     } else {
       setMonthData(p => ({
         ...p,
-        [monthKey]: {
-          ...p[monthKey],
-          egresos: [...p[monthKey].egresos, {
+        [startKey]: {
+          ...p[startKey],
+          egresos: [...p[startKey].egresos, {
             id:       String(o.id_obligacion),
             concepto: o.emisor,
             importe:  Math.round(parseFloat(String(o.monto))),
@@ -453,7 +510,7 @@ function CashFlow() {
         },
       }));
     }
-    toast.success(`${o.emisor} importada${monthKey === null ? " a todos los meses" : ` a ${addTarget.label}`}.`);
+    toast.success(`${o.emisor} importada ${alcanceAviso}.`);
   };
 
   const handleResetProjections = () => {
@@ -472,10 +529,10 @@ function CashFlow() {
 
   const generalIngresos = (
           <Card className="rounded-2xl border-success/20 bg-success/5 p-5 shadow-[var(--shadow-soft)]">
-            <div className="flex flex-col gap-5 lg:flex-row">
-            <div className="lg:w-72 lg:shrink-0">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="flex flex-col gap-5 lg:grid lg:grid-cols-4 lg:gap-3">
+            <div className="min-w-0 lg:col-span-1 lg:border-y lg:border-transparent lg:py-3">
+            <div className="flex h-8 items-center justify-between">
+              <span className="flex items-center gap-1.5 whitespace-nowrap text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 <TrendingUp className="h-4 w-4 text-success" /> Ingresos proyectados
               </span>
               <div className="flex items-center gap-1.5">
@@ -487,7 +544,7 @@ function CashFlow() {
                 </button>
               </div>
             </div>
-            <div className="mt-3 text-2xl font-bold tracking-tight text-success">
+            <div className="mt-3 flex h-8 items-center text-2xl font-bold tracking-tight text-success">
               {hasIncome ? fmtArs(projIngresos) : "—"}
             </div>
 
@@ -497,17 +554,18 @@ function CashFlow() {
                   <p className="mt-4 text-center text-xs text-muted-foreground">Sin ingresos cargados. Usá + para agregar.</p>
                 )}
                 {sources.length > 0 && (
-                  <div className="mt-4 space-y-1.5">
+                  <div className="mt-4 space-y-1.5 lg:px-[13px]">
                     {sources.map(s => (
-                      <div key={s.id} className="flex items-center justify-between rounded-xl bg-muted/40 px-3 py-2">
-                        <div className="min-w-0">
+                      <div key={s.id} className="flex items-center gap-1.5 rounded-xl bg-success/10 px-2 py-1.5">
+                        <div className="min-w-0 flex-1">
                           <div className="truncate text-xs font-medium">{s.nombre}</div>
-                          <div className="text-[11px] text-muted-foreground">
-                            ARS {s.importe.toLocaleString("es-AR")} c/mes
-                          </div>
                         </div>
+                        <input className="h-7 w-24 shrink-0 rounded-lg border border-border bg-background px-2 text-right text-xs" type="text" inputMode="numeric"
+                          value={s.importe ? s.importe.toLocaleString("es-AR", { maximumFractionDigits: 0 }) : ""}
+                          onChange={ev => updateSourceImporte(s.id, ev.target.value.replace(/\D/g, ""))}
+                          placeholder="Importe" />
                         <button onClick={() => setSources(p => p.filter(x => x.id !== s.id))}
-                          className="ml-2 shrink-0 text-muted-foreground/50 transition hover:text-destructive">
+                          className="shrink-0 text-muted-foreground/50 transition hover:text-destructive">
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -517,8 +575,8 @@ function CashFlow() {
               </>
             )}
             </div>
-            <div className="min-w-0 flex-1">
-              <MonthSubcards kind="ing" {...subcardProps} />
+            <div className="min-w-0 lg:col-span-3">
+              <MonthSubcards kind="ing" {...subcardProps} open={incomesOpen} />
             </div>
             </div>
           </Card>
@@ -526,10 +584,10 @@ function CashFlow() {
 
   const generalEgresos = (
           <Card className="rounded-2xl border-destructive/20 bg-destructive/5 p-5 shadow-[var(--shadow-soft)]">
-            <div className="flex flex-col gap-5 lg:flex-row">
-            <div className="lg:w-72 lg:shrink-0">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="flex flex-col gap-5 lg:grid lg:grid-cols-4 lg:gap-3">
+            <div className="min-w-0 lg:col-span-1 lg:border-y lg:border-transparent lg:py-3">
+            <div className="flex h-8 items-center justify-between">
+              <span className="flex items-center gap-1.5 whitespace-nowrap text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 <TrendingDown className="h-4 w-4 text-destructive" /> Egresos proyectados
               </span>
               <div className="flex items-center gap-1.5">
@@ -541,21 +599,20 @@ function CashFlow() {
                 </button>
               </div>
             </div>
-            <div className="mt-3 text-2xl font-bold tracking-tight text-destructive">
+            <div className="mt-3 flex h-8 items-center text-2xl font-bold tracking-tight text-destructive">
               {projEgresos > 0 ? fmtArs(projEgresos) : "—"}
             </div>
 
             {egresosOpen && (
               <>
                 {egresoItems.length > 0 ? (
-                  <div className="mt-4 space-y-1.5">
+                  <div className="mt-4 space-y-1.5 lg:px-[13px]">
                     {egresoItems.map(e => (
-                      <div key={e.id} className="flex items-center gap-1.5 rounded-xl bg-muted/40 px-2 py-1.5">
-                        {!e.id.startsWith("m_") && (
-                          <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">OBL</span>
-                        )}
-                        <span className="min-w-0 flex-1 truncate text-xs font-medium">{e.emisor}</span>
-                        <input className="h-7 w-28 shrink-0 rounded-lg border border-border bg-background px-2 text-right text-xs" type="text" inputMode="numeric"
+                      <div key={e.id} className="flex items-center gap-1.5 rounded-xl bg-destructive/10 px-2 py-1.5">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-medium">{e.emisor}</div>
+                        </div>
+                        <input className="h-7 w-24 shrink-0 rounded-lg border border-border bg-background px-2 text-right text-xs" type="text" inputMode="numeric"
                           value={e.monto ? Number(e.monto).toLocaleString("es-AR", { maximumFractionDigits: 0 }) : ""}
                           onChange={ev => updateEgresoMonto(e.id, ev.target.value.replace(/\D/g, ""))}
                           placeholder="Importe" />
@@ -572,8 +629,8 @@ function CashFlow() {
               </>
             )}
             </div>
-            <div className="min-w-0 flex-1">
-              <MonthSubcards kind="egr" {...subcardProps} />
+            <div className="min-w-0 lg:col-span-3">
+              <MonthSubcards kind="egr" {...subcardProps} open={egresosOpen} />
             </div>
             </div>
           </Card>
@@ -584,22 +641,22 @@ function CashFlow() {
             !hasIncome ? "border-border" :
             positive ? "border-success/30 bg-success/5" : "border-destructive/30 bg-destructive/5"
           }`}>
-            <div className="flex flex-col gap-5 lg:flex-row">
-            <div className="lg:w-72 lg:shrink-0">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="flex flex-col gap-5 lg:grid lg:grid-cols-4 lg:gap-3">
+            <div className="min-w-0 lg:col-span-1 lg:border-y lg:border-transparent lg:py-3">
+            <div className="flex h-8 items-center justify-between">
+              <span className="flex items-center gap-1.5 whitespace-nowrap text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 <Wallet className={`h-4 w-4 ${
                   !hasIncome ? "text-muted-foreground" : positive ? "text-success" : "text-destructive"
                 }`} /> Saldo proyectado
               </span>
             </div>
-            <div className={`mt-3 text-2xl font-bold tracking-tight ${
+            <div className={`mt-3 flex h-8 items-center text-2xl font-bold tracking-tight ${
               !hasIncome ? "text-muted-foreground" : positive ? "text-success" : "text-destructive"
             }`}>
               {hasIncome ? `${positive ? "+" : "−"}${fmtArs(saldo)}` : "—"}
             </div>
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 lg:col-span-3">
               <MonthSubcards kind="saldo" {...subcardProps} />
             </div>
             </div>
@@ -645,14 +702,12 @@ function CashFlow() {
           <DialogHeader>
             <DialogTitle>
               {addTarget?.kind === "ing" ? "Nuevo ingreso" : "Nuevo egreso"}
-              {addTarget && <span className="font-normal text-muted-foreground"> · {addTarget.label}</span>}
+              {addTarget && <span className="font-normal text-muted-foreground"> · {alcance}</span>}
             </DialogTitle>
             <DialogDescription>
               {addStep === "choice" ? "¿Cómo querés registrar el egreso?" :
                addStep === "import" ? "Elegí las obligaciones a importar." :
-               addTarget?.monthKey === null
-                 ? "Se aplica a cada mes de la proyección."
-                 : "Se aplica solo a este mes."}
+               `Completá los datos del ${addTarget?.kind === "ing" ? "ingreso" : "egreso"}.`}
             </DialogDescription>
           </DialogHeader>
 
@@ -694,11 +749,12 @@ function CashFlow() {
                   value={fNombre} onChange={e => setFNombre(e.target.value)} />
               </div>
               <div>
-                <Label>Importe{addTarget?.monthKey === null ? " mensual" : ""} (ARS)</Label>
+                <Label>Importe{proyectar ? " mensual" : ""} (ARS)</Label>
                 <Input className="mt-1.5 h-10 rounded-xl" type="text" inputMode="numeric" placeholder="Ej: 500.000"
                   value={fImporte ? Number(fImporte).toLocaleString("es-AR", { maximumFractionDigits: 0 }) : ""}
                   onChange={e => setFImporte(e.target.value.replace(/\D/g, ""))} />
               </div>
+              {proyectarCheck}
               <div className="flex gap-2">
                 {addTarget?.kind === "egr" ? (
                   <Button type="button" variant="outline" className="rounded-xl" onClick={() => setAddStep("choice")}>
@@ -720,6 +776,7 @@ function CashFlow() {
           {/* Importar obligaciones */}
           {addStep === "import" && (
             <div className="mt-2 space-y-3">
+              {proyectarCheck}
               {importables.length > 0 ? (
                 <div className="max-h-80 space-y-1.5 overflow-y-auto">
                   {importables.map(o => (
