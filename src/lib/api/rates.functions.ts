@@ -73,22 +73,20 @@ type ArgDatosCuenta = {
   condicionesCorto: string | null;
 };
 
-type FCIFondo = {
-  nombre: string;
-  tipoRenta: string;
-  plazoLiquidacionDias: number;
+// Valor de cuotaparte (vcp) de un FCI de mercado de dinero en una fecha
+type FCICuotaparte = {
+  fondo: string;
   fecha: string;
-  // ultimos7Dias es el rendimiento (%) de los últimos 7 días, sin anualizar;
-  // tnaEstimada es la TNA (%) estimada por ArgentinaDatos sobre el último mes
-  rendimientos: { ultimos7Dias?: number; tnaEstimada?: number } | null;
+  vcp: number;
 };
 
-// TNA (%) de un FCI: la estimada por la API o, si falta, el rendimiento de 7 días anualizado
-function fciTna(f: FCIFondo): number {
-  const r = f.rendimientos;
-  if (r?.tnaEstimada != null && r.tnaEstimada > 0) return r.tnaEstimada;
-  if (r?.ultimos7Dias != null && r.ultimos7Dias > 0) return (r.ultimos7Dias * 365) / 7;
-  return 0;
+// TNA (%) de un FCI: variación de la cuotaparte entre las dos últimas fechas
+// informadas, anualizada según los días transcurridos (incluye fines de semana)
+function fciTna(ultimo: FCICuotaparte, previo: FCICuotaparte | undefined): number {
+  if (!previo || previo.vcp <= 0) return 0;
+  const dias = (Date.parse(ultimo.fecha) - Date.parse(previo.fecha)) / 86_400_000;
+  if (dias <= 0) return 0;
+  return ((ultimo.vcp / previo.vcp - 1) * 365 * 100) / dias;
 }
 
 // Mapeo: nombre exacto del fondo FCI → entidad comercial que lo distribuye
@@ -160,24 +158,24 @@ function formatTope(tope: number | null): string | null {
   return `hasta $${tope}`;
 }
 
-export const getCuentasRemuneradas = createServerFn({ method: "GET" }).handler(async () => {
+async function fetchCuentasRemuneradas() {
   const fciCovered = new Set(Object.values(FCI_MONEY_MARKET));
 
-  const [otrosRes, fondosRes] = await Promise.all([
-    fetch("https://api.argentinadatos.com/v1/finanzas/fci/otros/ultimo", {
+  const argDatos = async <T,>(path: string): Promise<T> => {
+    const res = await fetch(`https://api.argentinadatos.com/v1/finanzas/fci/${path}`, {
       signal: AbortSignal.timeout(8000),
       headers: { Accept: "application/json" },
-    }),
-    fetch("https://api.argentinadatos.com/v1/finanzas/fci/fondos", {
-      signal: AbortSignal.timeout(8000),
-      headers: { Accept: "application/json" },
-    }),
-  ]);
-  if (!otrosRes.ok) throw new Error(`ArgentinaDatos /otros respondió ${otrosRes.status}`);
-  if (!fondosRes.ok) throw new Error(`ArgentinaDatos /fondos respondió ${fondosRes.status}`);
+    });
+    if (!res.ok) throw new Error(`ArgentinaDatos /${path} respondió ${res.status}`);
+    return (await res.json()) as T;
+  };
 
-  const otrosData  = (await otrosRes.json()) as ArgDatosCuenta[];
-  const fondosData = (await fondosRes.json()) as { fondos: FCIFondo[] };
+  const [otrosData, mmUltimo, mmPrevio] = await Promise.all([
+    argDatos<ArgDatosCuenta[]>("otros/ultimo"),
+    argDatos<FCICuotaparte[]>("mercadoDinero/ultimo"),
+    argDatos<FCICuotaparte[]>("mercadoDinero/penultimo"),
+  ]);
+  const previoPorFondo = new Map(mmPrevio.map((f) => [f.fondo, f]));
 
   // Billeteras y cuentas no-FCI — excluir entidades ya cubiertas por FCI
   const filas = otrosData
@@ -221,12 +219,14 @@ export const getCuentasRemuneradas = createServerFn({ method: "GET" }).handler(a
   });
 
   // Fondos Money Market conocidos → nombre de entidad comercial
-  const fromFCI: CuentaRemunRate[] = fondosData.fondos
-    .filter((f) => FCI_MONEY_MARKET[f.nombre] && fciTna(f) > 0)
-    .map((f): CuentaRemunRate => ({
-      nombre:           FCI_MONEY_MARKET[f.nombre],
-      tna:              Math.round(fciTna(f) * 100) / 100,
-      tea:              tnaToTea(fciTna(f)),
+  const fromFCI: CuentaRemunRate[] = mmUltimo
+    .filter((f) => FCI_MONEY_MARKET[f.fondo])
+    .map((f) => ({ f, tna: fciTna(f, previoPorFondo.get(f.fondo)) }))
+    .filter(({ tna }) => tna > 0)
+    .map(({ f, tna }): CuentaRemunRate => ({
+      nombre:           FCI_MONEY_MARKET[f.fondo],
+      tna:              Math.round(tna * 100) / 100,
+      tea:              tnaToTea(tna),
       tope:             null,
       fecha:            f.fecha,
       condicionesCorto: null,
@@ -236,9 +236,9 @@ export const getCuentasRemuneradas = createServerFn({ method: "GET" }).handler(a
     billeteras: fromOtros.sort((a, b) => b.tna - a.tna),
     fci:        fromFCI.sort((a, b) => b.tna - a.tna),
   };
-});
+}
 
-export const getPlazofijo = createServerFn({ method: "GET" }).handler(async () => {
+async function fetchPlazofijo() {
   const res = await fetch("https://www.bcra.gob.ar/api/endpoints/plazos-fijos.php", {
     signal: AbortSignal.timeout(8000),
     headers: { Accept: "application/json" },
@@ -257,9 +257,42 @@ export const getPlazofijo = createServerFn({ method: "GET" }).handler(async () =
       condicionesCorto: null,
     }))
     .sort((a, b) => b.tnaClientes - a.tnaClientes);
-});
+}
 
 // TNA (% anual, capitalización diaria) → TEA (% anual)
 function tnaToTea(tna: number): number {
   return Math.round((Math.pow(1 + tna / 100 / 365, 365) - 1) * 1000) / 10;
 }
+
+// ─── Caché de datos de mercado ───────────────────────────────────────────────
+// Las fuentes se actualizan como mucho una vez por día: se guarda el resultado
+// en memoria del servidor.
+// Los pedidos simultáneos comparten una sola descarga y, si la fuente falla,
+// se devuelve el último dato obtenido.
+
+const MARKET_TTL_MS = 60 * 60 * 1000;
+
+function cached<T>(fn: () => Promise<T>): () => Promise<T> {
+  let value: { data: T; at: number } | null = null;
+  let inFlight: Promise<T> | null = null;
+  return async () => {
+    if (value && Date.now() - value.at < MARKET_TTL_MS) return value.data;
+    if (!inFlight) {
+      inFlight = fn()
+        .then((data) => { value = { data, at: Date.now() }; return data; })
+        .finally(() => { inFlight = null; });
+    }
+    try {
+      return await inFlight;
+    } catch (err) {
+      if (value) return value.data;
+      throw err;
+    }
+  };
+}
+
+const cuentasRemuneradasCached = cached(fetchCuentasRemuneradas);
+const plazofijoCached = cached(fetchPlazofijo);
+
+export const getCuentasRemuneradas = createServerFn({ method: "GET" }).handler(() => cuentasRemuneradasCached());
+export const getPlazofijo = createServerFn({ method: "GET" }).handler(() => plazofijoCached());

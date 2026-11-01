@@ -110,7 +110,7 @@ Ejemplos: Mercado Fondo (Mercado Pago), Ualintec Ahorro Pesos (Ualá), Vinci Com
 Ventajas frente al plazo fijo: liquidez inmediata y capitalización diaria.
 Diferencia con la cuenta remunerada: en un FCI sos copropietario de una cartera de activos; en una cuenta remunerada el dinero es un depósito en la entidad.
 
-La TNA que muestra Primus corresponde al rendimiento de los últimos 7 días anualizado, publicado diariamente por la CNV.`,
+La TNA que muestra Primus corresponde al rendimiento del último día hábil informado (variación del valor de la cuotaparte), anualizado, según los datos que publica diariamente la CNV.`,
       },
     ],
   },
