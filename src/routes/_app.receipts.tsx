@@ -376,7 +376,7 @@ function Obligations() {
       {obligations.length > 0 && (
         <Card className="rounded-2xl border-border p-5 shadow-[var(--shadow-soft)]">
           <div className="overflow-hidden rounded-xl border border-border">
-            <Table>
+            <Table className="min-w-[560px]">
               <TableHeader>
                 <TableRow className="bg-muted/40">
                   <TableHead>Emisor</TableHead>
@@ -392,8 +392,8 @@ function Obligations() {
                   const estado = computeEstado(ob.fecha_vencimiento, ob.pagado);
                   return (
                     <TableRow key={ob.id_obligacion}>
-                      <TableCell className="font-medium">{ob.emisor}</TableCell>
-                      <TableCell className="text-center font-semibold">{formatMonto(ob.monto)}</TableCell>
+                      <TableCell className="whitespace-nowrap font-medium">{ob.emisor}</TableCell>
+                      <TableCell className="whitespace-nowrap text-center font-semibold">{formatMonto(ob.monto)}</TableCell>
                       <TableCell className="hidden text-center text-muted-foreground md:table-cell">
                         {formatObligationDate(ob.fecha_vencimiento)}
                       </TableCell>
@@ -426,7 +426,7 @@ function Obligations() {
               <TableFooter>
                 <TableRow className="hover:bg-transparent">
                   <TableCell className="font-semibold">Total</TableCell>
-                  <TableCell className="text-center font-bold">
+                  <TableCell className="whitespace-nowrap text-center font-bold">
                     ARS {(totalPendiente + totalPagado).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </TableCell>
                   <TableCell className="hidden md:table-cell" />

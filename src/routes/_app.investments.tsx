@@ -358,30 +358,32 @@ function Investments() {
       </Card>
 
       {/* Tabs */}
-      <div className="flex w-full gap-1 rounded-xl border border-border bg-muted/40 p-1">
+      <div className="grid w-full grid-cols-[1fr_0.85fr_1.3fr_0.85fr] gap-1 sm:grid-cols-4 rounded-xl border border-border bg-muted/40 p-1">
         <button
           onClick={() => handleTabChange("all")}
-          className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${tab === "all" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          className={`min-w-0 rounded-lg px-1 py-2 text-xs font-medium leading-tight transition sm:text-sm ${tab === "all" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
         >
           Consolidado
         </button>
         <button
           onClick={() => handleTabChange("pf")}
-          className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${tab === "pf" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          className={`min-w-0 rounded-lg px-1 py-2 text-xs font-medium leading-tight transition sm:text-sm ${tab === "pf" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
         >
-          Plazo Fijo
+          <span className="sm:hidden">PF</span>
+          <span className="hidden sm:inline">Plazo Fijo</span>
         </button>
         <button
           onClick={() => handleTabChange("cr")}
-          className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${tab === "cr" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          className={`min-w-0 rounded-lg px-1 py-2 text-xs font-medium leading-tight transition sm:text-sm ${tab === "cr" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
         >
           Cuentas Remuneradas
         </button>
         <button
           onClick={() => handleTabChange("fci")}
-          className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${tab === "fci" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          className={`min-w-0 rounded-lg px-1 py-2 text-xs font-medium leading-tight transition sm:text-sm ${tab === "fci" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
         >
-          Fondos Comunes de Inversión
+          <span className="sm:hidden">FCI</span>
+          <span className="hidden sm:inline">Fondos Comunes de Inversión</span>
         </button>
       </div>
 
@@ -442,17 +444,19 @@ function Investments() {
                       <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1">{r.condicionesCorto}</div>
                     )}
                   </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
-                    <div className={`text-sm font-bold ${isSelected ? "text-primary" : "text-primary"}`}>{tna.toFixed(2)}%</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TEA</div>
-                    <div className="text-sm font-semibold">{r.tea.toFixed(1)}%</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{days === 365 ? "1 año" : `${days} días`}</div>
-                    <div className="text-sm font-bold text-success">+ARS {gain.toLocaleString("es-AR")}</div>
+                  <div className="ml-auto flex items-center gap-3">
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
+                      <div className={`text-sm font-bold ${isSelected ? "text-primary" : "text-primary"}`}>{tna.toFixed(2)}%</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TEA</div>
+                      <div className="text-sm font-semibold">{r.tea.toFixed(1)}%</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{days === 365 ? "1 año" : `${days} días`}</div>
+                      <div className="text-sm font-bold text-success">+ARS {gain.toLocaleString("es-AR")}</div>
+                    </div>
                   </div>
                 </button>
               );
@@ -522,17 +526,19 @@ function Investments() {
                       />
                     )}
                   </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
-                    <div className="text-sm font-bold text-primary">{r.tna.toFixed(2)}%</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TEA</div>
-                    <div className="text-sm font-semibold">{r.tea.toFixed(1)}%</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{days === 365 ? "1 año" : `${days} días`}</div>
-                    <div className="text-sm font-bold text-success">+ARS {gain.toLocaleString("es-AR")}</div>
+                  <div className="ml-auto flex items-center gap-3">
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
+                      <div className="text-sm font-bold text-primary">{r.tna.toFixed(2)}%</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TEA</div>
+                      <div className="text-sm font-semibold">{r.tea.toFixed(1)}%</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{days === 365 ? "1 año" : `${days} días`}</div>
+                      <div className="text-sm font-bold text-success">+ARS {gain.toLocaleString("es-AR")}</div>
+                    </div>
                   </div>
                 </div>
                 {r.variantes && expandida === expKey && (
@@ -589,17 +595,19 @@ function Investments() {
                   <div className="min-w-[150px] flex-1">
                     <div className="text-sm font-semibold">{r.nombre}</div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
-                    <div className="text-sm font-bold text-primary">{r.tna.toFixed(2)}%</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TEA</div>
-                    <div className="text-sm font-semibold">{r.tea.toFixed(1)}%</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{days === 365 ? "1 año" : `${days} días`}</div>
-                    <div className="text-sm font-bold text-success">+ARS {gain.toLocaleString("es-AR")}</div>
+                  <div className="ml-auto flex items-center gap-3">
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
+                      <div className="text-sm font-bold text-primary">{r.tna.toFixed(2)}%</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TEA</div>
+                      <div className="text-sm font-semibold">{r.tea.toFixed(1)}%</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{days === 365 ? "1 año" : `${days} días`}</div>
+                      <div className="text-sm font-bold text-success">+ARS {gain.toLocaleString("es-AR")}</div>
+                    </div>
                   </div>
                 </button>
               );
@@ -609,7 +617,7 @@ function Investments() {
           <div className="mt-5 flex items-start gap-3 rounded-xl bg-muted/50 p-3 text-xs text-muted-foreground">
             <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <span>
-              Los fondos money market invierten en instrumentos de corto plazo (plazos fijos, cauciones, letras). La TNA mostrada corresponde al rendimiento de los últimos 7 días anualizado y puede variar diariamente. Invertir en FCI implica riesgos. Verificá siempre las condiciones con cada sociedad gerente antes de invertir. Primus no recibe comisión de ninguna entidad.
+              Los fondos money market invierten en instrumentos de corto plazo (plazos fijos, cauciones, letras). La TNA mostrada corresponde al rendimiento del último día hábil informado, anualizado, y puede variar diariamente. Invertir en FCI implica riesgos. Verificá siempre las condiciones con cada sociedad gerente antes de invertir. Primus no recibe comisión de ninguna entidad.
             </span>
           </div>
         </Card>
@@ -668,17 +676,19 @@ function Investments() {
                       />
                     )}
                   </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
-                    <div className="text-sm font-bold text-primary">{r.tna.toFixed(2)}%</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TEA</div>
-                    <div className="text-sm font-semibold">{r.tea.toFixed(1)}%</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{days === 365 ? "1 año" : `${days} días`}</div>
-                    <div className="text-sm font-bold text-success">+ARS {gain.toLocaleString("es-AR")}</div>
+                  <div className="ml-auto flex items-center gap-3">
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
+                      <div className="text-sm font-bold text-primary">{r.tna.toFixed(2)}%</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TEA</div>
+                      <div className="text-sm font-semibold">{r.tea.toFixed(1)}%</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{days === 365 ? "1 año" : `${days} días`}</div>
+                      <div className="text-sm font-bold text-success">+ARS {gain.toLocaleString("es-AR")}</div>
+                    </div>
                   </div>
                 </div>
                 {r.variantes && expandida === expKey && (

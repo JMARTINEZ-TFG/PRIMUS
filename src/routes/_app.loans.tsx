@@ -363,22 +363,24 @@ function Loans() {
                       </button>
                     )}
                   </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
-                    <div className="text-sm font-bold">{r.tna.toFixed(1)}%</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">CFT</div>
-                    <div className={`text-sm font-bold ${isFirst ? "text-success" : ""}`}>{r.cft.toFixed(1)}%</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Cuota</div>
-                    <div className="text-sm font-bold">{c != null ? `ARS ${fmtArs(c)}` : "—"}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">vs. mejor</div>
-                    <div className={`text-sm font-bold ${isFirst ? "text-success" : "text-destructive"}`}>
-                      {!available ? "Plazo no disponible" : isFirst ? "—" : `+ARS ${fmtArs(diff!)}`}
+                  <div className="ml-auto flex items-center gap-3">
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
+                      <div className="text-sm font-bold">{r.tna.toFixed(1)}%</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">CFT</div>
+                      <div className={`text-sm font-bold ${isFirst ? "text-success" : ""}`}>{r.cft.toFixed(1)}%</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Cuota</div>
+                      <div className="text-sm font-bold">{c != null ? `ARS ${fmtArs(c)}` : "—"}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">vs. mejor</div>
+                      <div className={`text-sm font-bold ${isFirst ? "text-success" : "text-destructive"}`}>
+                        {!available ? "Plazo no disponible" : isFirst ? "—" : `+ARS ${fmtArs(diff!)}`}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -408,10 +410,12 @@ function Loans() {
                             {o.tipo === "uva" && <UvaBadge />}
                             {detalle(o)}
                           </div>
-                          <div className="text-xs font-semibold">TNA {o.tna.toFixed(1)}%</div>
-                          <div className="text-xs font-semibold">CFT {o.cft.toFixed(1)}%</div>
-                          <div className="w-28 text-right text-xs font-semibold">
-                            {oc != null ? `ARS ${fmtArs(oc)}` : "Plazo no disp."}
+                          <div className="ml-auto flex items-center gap-3">
+                            <div className="text-xs font-semibold">TNA {o.tna.toFixed(1)}%</div>
+                            <div className="text-xs font-semibold">CFT {o.cft.toFixed(1)}%</div>
+                            <div className="w-28 text-right text-xs font-semibold">
+                              {oc != null ? `ARS ${fmtArs(oc)}` : "Plazo no disp."}
+                            </div>
                           </div>
                         </button>
                       );
