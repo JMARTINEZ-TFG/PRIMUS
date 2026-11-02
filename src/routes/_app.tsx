@@ -14,13 +14,14 @@ export const Route = createFileRoute("/_app")({
   component: AppLayout,
 });
 
-const titles: Record<string, { title: string; subtitle: string }> = {
+// short: título en celular, donde no entra el completo
+const titles: Record<string, { title: string; short?: string; subtitle: string }> = {
   "/dashboard": { title: "Dashboard", subtitle: "Vista consolidada de tu salud financiera" },
-  "/accounts": { title: "Cuentas Vinculadas", subtitle: "Bancos y billeteras virtuales sincronizados" },
-  "/receipts": { title: "Obligaciones", subtitle: "Ingesta documental inteligente" },
-  "/cashflow": { title: "Proyecciones de Cash Flow", subtitle: "Liquidez proyectada en tiempo real" },
-  "/investments": { title: "Opciones de Inversión", subtitle: "Ranking objetivo de alternativas del mercado" },
-  "/loans": { title: "Opciones de Financiación", subtitle: "Crédito ordenado por CFT" },
+  "/accounts": { title: "Cuentas Vinculadas", short: "Cuentas", subtitle: "Bancos y billeteras virtuales sincronizados" },
+  "/receipts": { title: "Obligaciones", subtitle: "Control de facturas, vencimientos y pagos" },
+  "/cashflow": { title: "Proyecciones de Cash Flow", short: "Cash Flow", subtitle: "Proyección de ingresos, egresos y saldo de los próximos meses" },
+  "/investments": { title: "Opciones de Inversión", short: "Inversión", subtitle: "Ranking objetivo de alternativas del mercado" },
+  "/loans": { title: "Opciones de Financiación", short: "Financiación", subtitle: "Crédito ordenado por CFT" },
   "/faq":   { title: "Glosario", subtitle: "Conceptos financieros explicados de forma simple" },
 };
 
@@ -39,11 +40,14 @@ function AppLayout() {
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md md:px-6">
             <MenuToggle />
-            <div className="hidden flex-col md:flex">
-              <h1 className="text-base font-semibold leading-tight">{meta.title}</h1>
-              <p className="text-xs text-muted-foreground">{meta.subtitle}</p>
+            <div className="flex min-w-0 flex-col">
+              <h1 className="truncate text-base font-semibold leading-tight">
+                <span className="md:hidden">{meta.short ?? meta.title}</span>
+                <span className="hidden md:inline">{meta.title}</span>
+              </h1>
+              <p className="hidden text-xs text-muted-foreground md:block">{meta.subtitle}</p>
             </div>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               <div
                 title={user.email}
                 className="grid h-9 w-9 place-items-center rounded-xl bg-[image:var(--gradient-primary)] text-sm font-semibold text-primary-foreground"
