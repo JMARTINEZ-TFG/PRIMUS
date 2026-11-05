@@ -152,16 +152,17 @@ function Loans() {
   const [expandida, setExpandida]     = useState<string | null>(null);
   const [selectedId, setSelectedId]   = useState<string | null>(null);
 
-  // Ofertas en pesos y UVA (ya vienen ordenadas por CFT), agrupadas en una fila
-  // por entidad ordenada por su mejor CFT
+  // Ofertas en pesos y UVA (ya vienen ordenadas por CFT) que permiten el plazo
+  // elegido, agrupadas en una fila por entidad ordenada por su mejor CFT
   const grupos = useMemo<EntityGroup[]>(() => {
     const map = new Map<string, LoanProduct[]>();
     for (const p of productos) {
+      if (p.plazoMax < plazo) continue;
       if (!map.has(p.entidad)) map.set(p.entidad, []);
       map.get(p.entidad)!.push(p);
     }
     return [...map.entries()].map(([entidad, ofertas]) => ({ entidad, ofertas }));
-  }, [productos]);
+  }, [productos, plazo]);
 
   const allOfertas = grupos.flatMap((g) => g.ofertas);
   const selected   = allOfertas.find((o) => o.id === selectedId) ?? grupos[0]?.ofertas[0];
@@ -311,15 +312,16 @@ function Loans() {
         <div className="mt-3 space-y-2.5">
           {grupos.length === 0 && (
             <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-              No hay ofertas informadas al BCRA en los últimos 90 días.
+              {productos.length === 0
+                ? "No hay ofertas informadas al BCRA en los últimos 90 días."
+                : `Ninguna oferta permite un plazo de ${plazo} meses.`}
             </div>
           )}
 
           {grupos.slice(0, visibles).map((g, i) => {
             const r          = g.ofertas[0];
-            const available  = plazo <= r.plazoMax;
-            const c          = available ? cuotaMensual(r.cft, amount, plazo) : null;
-            const diff       = c != null ? c * plazo - bestCuota * plazo : null;
+            const c          = cuotaMensual(r.cft, amount, plazo);
+            const diff       = c * plazo - bestCuota * plazo;
             const isFirst    = i === 0;
             const isSelected = selected?.entidad === g.entidad;
             const abierta    = expandida === g.entidad;
@@ -328,16 +330,13 @@ function Loans() {
               <div key={g.entidad} className="space-y-1.5">
                 <div
                   role="button"
-                  tabIndex={available ? 0 : -1}
-                  onClick={() => available && setSelectedId(r.id)}
-                  onKeyDown={(e) => { if (available && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setSelectedId(r.id); } }}
-                  aria-disabled={!available}
+                  tabIndex={0}
+                  onClick={() => setSelectedId(r.id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedId(r.id); } }}
                   className={`flex w-full flex-wrap items-center gap-3 rounded-xl border p-3.5 text-left transition ${
                     isSelected
                       ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                      : available
-                        ? "cursor-pointer border-border bg-card hover:border-primary/40"
-                        : "cursor-not-allowed border-border bg-muted/30 opacity-40"
+                      : "cursor-pointer border-border bg-card hover:border-primary/40"
                   }`}
                 >
                   <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-bold ${
@@ -366,7 +365,7 @@ function Loans() {
                     )}
                   </div>
                   {/* Columnas de ancho fijo para que queden alineadas entre filas. En celular se omite
-                      "ARS" y se abrevia "No disponible" para que los valores entren */}
+                      "ARS" para que los valores entren */}
                   <div className="ml-auto grid w-full grid-cols-[minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1.4fr)] items-start gap-2 tabular-nums sm:w-auto sm:grid-cols-[3rem_3.5rem_5.75rem_7rem] sm:gap-3">
                     <div className="text-right">
                       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
@@ -378,14 +377,12 @@ function Loans() {
                     </div>
                     <div className="text-right">
                       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Cuota</div>
-                      <div className="whitespace-nowrap text-xs font-bold sm:text-sm">{c != null ? <><span className="hidden sm:inline">ARS </span>{fmtArs(c)}</> : "—"}</div>
+                      <div className="whitespace-nowrap text-xs font-bold sm:text-sm"><span className="hidden sm:inline">ARS </span>{fmtArs(c)}</div>
                     </div>
                     <div className="text-right">
                       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">vs. mejor</div>
                       <div className={`whitespace-nowrap text-xs font-bold sm:text-sm ${isFirst ? "text-success" : "text-destructive"}`}>
-                        {!available
-                          ? <><span className="sm:hidden">No disp.</span><span className="hidden sm:inline">No disponible</span></>
-                          : isFirst ? "—" : <>+<span className="hidden sm:inline">ARS </span>{fmtArs(diff!)}</>}
+                        {isFirst ? "—" : <>+<span className="hidden sm:inline">ARS </span>{fmtArs(diff)}</>}
                       </div>
                     </div>
                   </div>
@@ -395,21 +392,17 @@ function Loans() {
                 {abierta && (
                   <div className="ml-6 space-y-1.5 border-l-2 border-border pl-3">
                     {g.ofertas.slice(1).map((o) => {
-                      const oAvail = plazo <= o.plazoMax;
-                      const oc     = oAvail ? cuotaMensual(o.cft, amount, plazo) : null;
+                      const oc     = cuotaMensual(o.cft, amount, plazo);
                       const oSel   = selected?.id === o.id;
                       return (
                         <button
                           key={o.id}
                           type="button"
-                          disabled={!oAvail}
                           onClick={() => setSelectedId(o.id)}
                           className={`flex w-full flex-wrap items-center gap-3 rounded-lg border px-3 py-2 text-left transition ${
                             oSel
                               ? "border-primary bg-primary/5"
-                              : oAvail
-                                ? "border-border bg-card hover:border-primary/40"
-                                : "cursor-not-allowed border-border bg-muted/30 opacity-40"
+                              : "border-border bg-card hover:border-primary/40"
                           }`}
                         >
                           <div className="flex min-w-[150px] flex-1 items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -420,7 +413,7 @@ function Loans() {
                             <div className="text-xs font-semibold">TNA {o.tna.toFixed(1)}%</div>
                             <div className="text-xs font-semibold">CFT {o.cft.toFixed(1)}%</div>
                             <div className="w-28 text-right text-xs font-semibold">
-                              {oc != null ? `ARS ${fmtArs(oc)}` : "Plazo no disp."}
+                              ARS {fmtArs(oc)}
                             </div>
                           </div>
                         </button>
