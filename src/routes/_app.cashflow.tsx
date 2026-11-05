@@ -1,10 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getObligations, type Obligation } from "@/lib/api/obligations.functions";
-import { getCashflow, saveCashflow, type CashflowData } from "@/lib/api/cashflow.functions";
+import { getCashflow, saveCashflow, type CashflowData, type CashflowGuardado } from "@/lib/api/cashflow.functions";
 import { TrendingUp, TrendingDown, Wallet, Plus, X, ChevronDown, RotateCcw, PenLine, ScanLine } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -82,10 +82,27 @@ function clearLegacyCashflow() {
 // Espera antes de guardar: agrupa en un solo pedido los cambios seguidos (p. ej. al tipear un importe)
 const SAVE_DELAY_MS = 600;
 
-function persistCashflow(datos: CashflowData) {
-  saveCashflow({ data: datos })
-    .then(clearLegacyCashflow)
-    .catch(() => toast.error("No se pudo guardar la proyección. Revisá tu conexión."));
+// Estado del guardado de una pantalla: versión que tiene, cola de pedidos (de a
+// uno, para que cada guardado use la versión que devolvió el anterior) y si se
+// detectó que otro dispositivo guardó antes
+type SyncState = { version: number | null; cola: Promise<void>; conflicto: boolean };
+
+function persistCashflow(sync: SyncState, datos: CashflowData, onConflicto: () => void) {
+  sync.cola = sync.cola.then(async () => {
+    if (sync.conflicto) return;
+    try {
+      const r = await saveCashflow({ data: { datos, version: sync.version } });
+      if (r.ok) {
+        sync.version = r.version;
+        clearLegacyCashflow();
+      } else {
+        sync.conflicto = true;
+        onConflicto();
+      }
+    } catch {
+      toast.error("No se pudo guardar la proyección. Revisá tu conexión.");
+    }
+  });
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -313,9 +330,16 @@ function MonthSubcards({
 
 function CashFlow() {
   const { obligations, guardado } = Route.useLoaderData();
-  const [inicial] = useState<CashflowData>(() => guardado ?? legacyCashflow());
+  // Cuando llega otra versión de la base (guardada desde otro dispositivo) la
+  // pantalla se vuelve a armar con esos datos
+  return <CashFlowEditor key={guardado?.version ?? 0} obligations={obligations} guardado={guardado} />;
+}
 
-  const [range, setRange] = useState<Range>("1m");
+function CashFlowEditor({ obligations, guardado }: { obligations: Obligation[]; guardado: CashflowGuardado | null }) {
+  const router = useRouter();
+  const [inicial] = useState<CashflowData>(() => guardado?.datos ?? legacyCashflow());
+
+  const [range, setRange] = useState<Range>(inicial.rango ?? "1m");
 
   const [sources, setSources] = useState<IncomeSource[]>(inicial.sources);
   const [importedDbIds, setImportedDbIds] = useState<string[]>(inicial.imported);
@@ -324,24 +348,59 @@ function CashFlow() {
 
   // Guardar en la base cada cambio (con una pequeña espera). Si se sale de la
   // pantalla antes de que se cumpla, se guarda en ese momento.
+  const sync = useRef<SyncState>({ version: guardado?.version ?? null, cola: Promise.resolve(), conflicto: false });
   const pendiente = useRef<CashflowData | null>(null);
+  // Lo que viene de la base no se vuelve a guardar al abrir la pantalla
+  const omitirGuardado = useRef(guardado !== null);
+  const onConflicto = () => {
+    toast.warning("Tu proyección cambió en otro dispositivo", {
+      description: "Para no pisar esos cambios, lo último que hiciste acá no se guardó.",
+      duration: Infinity,
+      action: { label: "Cargar la última", onClick: () => router.invalidate() },
+    });
+  };
+  const onConflictoRef = useRef(onConflicto);
+  onConflictoRef.current = onConflicto;
+
   useEffect(() => {
+    if (omitirGuardado.current) { omitirGuardado.current = false; return; }
     const overrides: CashflowData["overrides"] = {};
     egresoItems.forEach(e => {
       if (!e.id.startsWith("m_")) overrides[e.id] = { monto: e.monto, desde: e.desde };
     });
     const datos: CashflowData = {
-      sources, imported: importedDbIds, overrides, months: monthData,
+      sources, imported: importedDbIds, overrides, months: monthData, rango: range,
       manual: egresoItems.filter(e => e.id.startsWith("m_")),
     };
     pendiente.current = datos;
-    const t = setTimeout(() => { pendiente.current = null; persistCashflow(datos); }, SAVE_DELAY_MS);
+    const t = setTimeout(() => {
+      pendiente.current = null;
+      persistCashflow(sync.current, datos, () => onConflictoRef.current());
+    }, SAVE_DELAY_MS);
     return () => clearTimeout(t);
-  }, [sources, importedDbIds, egresoItems, monthData]);
+  }, [sources, importedDbIds, egresoItems, monthData, range]);
   useEffect(() => {
-    const p = pendiente;
-    return () => { if (p.current) persistCashflow(p.current); };
+    const p = pendiente, s = sync, c = onConflictoRef;
+    return () => { if (p.current) persistCashflow(s.current, p.current, () => c.current()); };
   }, []);
+
+  // Al volver a la pestaña: si otro dispositivo guardó una versión nueva y acá no
+  // hay cambios sin guardar, se recarga
+  useEffect(() => {
+    const alVolver = async () => {
+      if (document.visibilityState !== "visible") return;
+      await sync.current.cola;
+      if (pendiente.current || sync.current.conflicto) return;
+      const remoto = await getCashflow().catch(() => undefined);
+      if (remoto && remoto.version !== sync.current.version && !pendiente.current) router.invalidate();
+    };
+    document.addEventListener("visibilitychange", alVolver);
+    window.addEventListener("focus", alVolver);
+    return () => {
+      document.removeEventListener("visibilitychange", alVolver);
+      window.removeEventListener("focus", alVolver);
+    };
+  }, [router]);
 
   // Propagar ítems nuevos del panel izquierdo a meses ya inicializados
   useEffect(() => {
