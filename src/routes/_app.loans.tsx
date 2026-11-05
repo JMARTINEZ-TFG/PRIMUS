@@ -294,7 +294,7 @@ function Loans() {
       {/* ── Ranking ── */}
       <Card className="rounded-2xl border-border p-5 shadow-[var(--shadow-soft)]">
         <div>
-          <h3 className="text-base font-semibold">Ranking Oferta Crediticia</h3>
+          <h3 className="text-base font-semibold">Ranking Oferta Crediticia (últimos 90 días)</h3>
           <p className="text-xs text-muted-foreground">
             Préstamos personales de libre destino en pesos y UVA ·{" "}
             {fuente === "BCRA"
@@ -370,7 +370,7 @@ function Loans() {
                   <div className="ml-auto grid w-full grid-cols-[minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1.4fr)] items-start gap-2 tabular-nums sm:w-auto sm:grid-cols-[3rem_3.5rem_5.75rem_7rem] sm:gap-3">
                     <div className="text-right">
                       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
-                      <div className="whitespace-nowrap text-xs font-bold sm:text-sm">{r.tna.toFixed(1)}%</div>
+                      <div className="whitespace-nowrap text-xs font-bold text-primary sm:text-sm">{r.tna.toFixed(1)}%</div>
                     </div>
                     <div className="text-right">
                       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">CFT</div>
