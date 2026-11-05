@@ -344,7 +344,7 @@ function CashFlow() {
       }
       return changed ? next : prev;
     });
-  }, [sources, egresoItems]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sources, egresoItems]);
 
   const months = buildMonthList(range);
 

@@ -2,7 +2,7 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Plus, Trash2, CheckCircle2, Clock, XCircle, AlertCircle, Receipt,
-  Loader2, ScanLine, PenLine, FileSearch, AlertTriangle,
+  Loader2, PenLine, FileSearch, AlertTriangle,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

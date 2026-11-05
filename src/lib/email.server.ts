@@ -11,10 +11,11 @@ async function sendEmail(opts: SendOpts): Promise<void> {
   }
   const { data, error } = await client.emails.send(opts);
   if (error) {
-    console.error("[resend] error al enviar email:", JSON.stringify(error), "-> to:", opts.to);
+    // Sin la dirección del destinatario: los logs no deben guardar datos personales
+    console.error("[resend] error al enviar email:", JSON.stringify(error));
     throw new Error(`Resend: ${error.message ?? JSON.stringify(error)}`);
   }
-  console.log("[resend] email enviado id:", data?.id, "-> to:", opts.to);
+  console.log("[resend] email enviado id:", data?.id);
 }
 
 export async function sendPasswordResetEmail(to: string, token: string): Promise<void> {

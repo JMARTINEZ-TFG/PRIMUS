@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
-import { getCookie, setCookie, deleteCookie } from "@tanstack/start-server-core";
+import { getCookie, setCookie, deleteCookie } from "@tanstack/react-start/server";
 
 const COOKIE_NAME = "primus_session";
 

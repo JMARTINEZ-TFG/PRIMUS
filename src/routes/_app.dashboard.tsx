@@ -40,10 +40,6 @@ function formatArs(n: number): string {
   return `ARS ${Math.abs(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function parseArs(s: string): number {
-  return parseFloat(s.replace("ARS ", "").replace(/\./g, "").replace(",", ".")) || 0;
-}
-
 // ─── Liquidez ─────────────────────────────────────────────────────────────────
 
 const MONTHS_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -134,7 +130,7 @@ function buildLiquidityData(totalArs: number, obligations: Obligation[]): LiqDay
 
 function Dashboard() {
   const { accounts, obligations, tipoCambio } = Route.useLoaderData();
-  const { ars, usd, totalArs } = consolidate(accounts, tipoCambio.valor);
+  const { usd, totalArs } = consolidate(accounts, tipoCambio.valor);
 
   const tcLabel = `TC ${tipoCambio.fuente === "BCRA" ? "BCRA" : "ref."} $${tipoCambio.valor.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${
     tipoCambio.fecha ? ` (${tipoCambio.fecha.slice(8, 10)}/${tipoCambio.fecha.slice(5, 7)})` : ""
