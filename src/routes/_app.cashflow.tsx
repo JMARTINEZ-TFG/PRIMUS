@@ -1,22 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getObligations, type Obligation } from "@/lib/api/obligations.functions";
+import { getCashflow, saveCashflow, type CashflowData } from "@/lib/api/cashflow.functions";
 import { TrendingUp, TrendingDown, Wallet, Plus, X, ChevronDown, RotateCcw, PenLine, ScanLine } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/_app/cashflow")({
-  // Las proyecciones viven en el localStorage del navegador: el servidor solo trae
-  // los datos (obligaciones) y la pantalla se dibuja en el cliente, para que no
-  // difiera de lo que renderizaría el servidor (sin acceso a localStorage).
+  // Las proyecciones se guardan en la base (proyeccion_cashflow). La pantalla se
+  // dibuja en el cliente: los meses dependen de la fecha del navegador y la
+  // primera vez se importa lo que hubiera quedado en localStorage.
   ssr: "data-only",
   loader: async () => {
-    const obligations = await getObligations();
-    return { obligations };
+    const [obligations, guardado] = await Promise.all([getObligations(), getCashflow()]);
+    return { obligations, guardado };
   },
   component: CashFlow,
 });
@@ -47,20 +48,44 @@ type MonthIngreso = { id: string; nombre: string; importe: number };
 type MonthEgreso  = { id: string; concepto: string; importe: number };
 type MonthData    = { initialized: boolean; ingresos: MonthIngreso[]; egresos: MonthEgreso[] };
 
-// ─── localStorage ─────────────────────────────────────────────────────────────
+// ─── Datos de versiones anteriores (localStorage) ────────────────────────────
+// Antes las proyecciones se guardaban en el navegador. Si el usuario todavía no
+// tiene nada en la base, se toma lo que haya quedado acá y se borra una vez guardado.
 
-const LS_SOURCES          = "primus_cf_sources";
-const LS_EGRESO_OVERRIDES = "primus_cf_egreso_overrides";
-const LS_EGRESO_MANUAL    = "primus_cf_egreso_manual";
-const LS_MONTH_PROJ       = "primus_cf_month_proj";
-const LS_EGRESO_IMPORTED  = "primus_cf_egreso_imported";
+const LS_KEYS = {
+  sources:   "primus_cf_sources",
+  overrides: "primus_cf_egreso_overrides",
+  manual:    "primus_cf_egreso_manual",
+  months:    "primus_cf_month_proj",
+  imported:  "primus_cf_egreso_imported",
+} as const;
 
 function lsGet<T>(key: string, fallback: T): T {
   try { const v = localStorage.getItem(key); return v ? (JSON.parse(v) as T) : fallback; }
   catch { return fallback; }
 }
-function lsSet(key: string, value: unknown) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+
+function legacyCashflow(): CashflowData {
+  return {
+    sources:   lsGet(LS_KEYS.sources, []),
+    overrides: lsGet(LS_KEYS.overrides, {}),
+    manual:    lsGet(LS_KEYS.manual, []),
+    months:    lsGet(LS_KEYS.months, {}),
+    imported:  lsGet(LS_KEYS.imported, []),
+  };
+}
+
+function clearLegacyCashflow() {
+  try { Object.values(LS_KEYS).forEach(k => localStorage.removeItem(k)); } catch { /* sin acceso al almacenamiento */ }
+}
+
+// Espera antes de guardar: agrupa en un solo pedido los cambios seguidos (p. ej. al tipear un importe)
+const SAVE_DELAY_MS = 600;
+
+function persistCashflow(datos: CashflowData) {
+  saveCashflow({ data: datos })
+    .then(clearLegacyCashflow)
+    .catch(() => toast.error("No se pudo guardar la proyección. Revisá tu conexión."));
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -100,9 +125,9 @@ function fmtNum(n: number): string {
   return n.toLocaleString("es-AR", { maximumFractionDigits: 0 });
 }
 
-function initEgresosFromStorage(obligations: Obligation[], importedIds: Set<string>): EgresoItem[] {
-  const overrides = lsGet<Record<string, { monto: string; desde?: string }>>(LS_EGRESO_OVERRIDES, {});
-  const manual    = lsGet<EgresoItem[]>(LS_EGRESO_MANUAL, []);
+function initEgresos(obligations: Obligation[], guardado: CashflowData): EgresoItem[] {
+  const { overrides, manual } = guardado;
+  const importedIds = new Set(guardado.imported);
   const dbItems   = obligations
     .filter(o => importedIds.has(String(o.id_obligacion)))
     .map(o => {
@@ -287,33 +312,36 @@ function MonthSubcards({
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 function CashFlow() {
-  const { obligations } = Route.useLoaderData();
+  const { obligations, guardado } = Route.useLoaderData();
+  const [inicial] = useState<CashflowData>(() => guardado ?? legacyCashflow());
 
   const [range, setRange] = useState<Range>("1m");
 
-  const [sources, setSources] = useState<IncomeSource[]>(() => lsGet<IncomeSource[]>(LS_SOURCES, []));
-  useEffect(() => { lsSet(LS_SOURCES, sources); }, [sources]);
+  const [sources, setSources] = useState<IncomeSource[]>(inicial.sources);
+  const [importedDbIds, setImportedDbIds] = useState<string[]>(inicial.imported);
+  const [egresoItems, setEgresoItems] = useState<EgresoItem[]>(() => initEgresos(obligations, inicial));
+  const [monthData, setMonthData] = useState<Record<string, MonthData>>(inicial.months);
 
-  const [importedDbIds, setImportedDbIds] = useState<string[]>(() => lsGet<string[]>(LS_EGRESO_IMPORTED, []));
-  useEffect(() => { lsSet(LS_EGRESO_IMPORTED, importedDbIds); }, [importedDbIds]);
-
-  const [egresoItems, setEgresoItems] = useState<EgresoItem[]>(() => {
-    const imported = new Set(lsGet<string[]>(LS_EGRESO_IMPORTED, []));
-    return initEgresosFromStorage(obligations, imported);
-  });
+  // Guardar en la base cada cambio (con una pequeña espera). Si se sale de la
+  // pantalla antes de que se cumpla, se guarda en ese momento.
+  const pendiente = useRef<CashflowData | null>(null);
   useEffect(() => {
-    const overrides: Record<string, { monto: string; desde?: string }> = {};
+    const overrides: CashflowData["overrides"] = {};
     egresoItems.forEach(e => {
       if (!e.id.startsWith("m_")) overrides[e.id] = { monto: e.monto, desde: e.desde };
     });
-    lsSet(LS_EGRESO_OVERRIDES, overrides);
-    lsSet(LS_EGRESO_MANUAL, egresoItems.filter(e => e.id.startsWith("m_")));
-  }, [egresoItems]);
-
-  const [monthData, setMonthData] = useState<Record<string, MonthData>>(
-    () => lsGet<Record<string, MonthData>>(LS_MONTH_PROJ, {})
-  );
-  useEffect(() => { lsSet(LS_MONTH_PROJ, monthData); }, [monthData]);
+    const datos: CashflowData = {
+      sources, imported: importedDbIds, overrides, months: monthData,
+      manual: egresoItems.filter(e => e.id.startsWith("m_")),
+    };
+    pendiente.current = datos;
+    const t = setTimeout(() => { pendiente.current = null; persistCashflow(datos); }, SAVE_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [sources, importedDbIds, egresoItems, monthData]);
+  useEffect(() => {
+    const p = pendiente;
+    return () => { if (p.current) persistCashflow(p.current); };
+  }, []);
 
   // Propagar ítems nuevos del panel izquierdo a meses ya inicializados
   useEffect(() => {
@@ -425,11 +453,10 @@ function CashFlow() {
 
   const importObligacion = (o: Obligation, desde?: string) => {
     const id = String(o.id_obligacion);
-    const overrides = lsGet<Record<string, { monto: string }>>(LS_EGRESO_OVERRIDES, {});
     setEgresoItems(p => [...p, {
       id,
       emisor: o.emisor,
-      monto:  overrides[id]?.monto ?? String(Math.round(parseFloat(String(o.monto)))),
+      monto:  String(Math.round(parseFloat(String(o.monto)))),
       desde,
     }]);
     setImportedDbIds(p => [...p, id]);
