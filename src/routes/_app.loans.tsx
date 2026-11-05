@@ -365,23 +365,27 @@ function Loans() {
                       </button>
                     )}
                   </div>
-                  <div className="ml-auto flex items-center gap-3">
+                  {/* Columnas de ancho fijo para que queden alineadas entre filas. En celular se omite
+                      "ARS" y se abrevia "No disponible" para que los valores entren */}
+                  <div className="ml-auto grid w-full grid-cols-[minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1.4fr)] items-start gap-2 tabular-nums sm:w-auto sm:grid-cols-[3rem_3.5rem_5.75rem_7rem] sm:gap-3">
                     <div className="text-right">
                       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">TNA</div>
-                      <div className="text-sm font-bold">{r.tna.toFixed(1)}%</div>
+                      <div className="whitespace-nowrap text-xs font-bold sm:text-sm">{r.tna.toFixed(1)}%</div>
                     </div>
                     <div className="text-right">
                       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">CFT</div>
-                      <div className={`text-sm font-bold ${isFirst ? "text-success" : ""}`}>{r.cft.toFixed(1)}%</div>
+                      <div className={`whitespace-nowrap text-xs font-bold sm:text-sm ${isFirst ? "text-success" : ""}`}>{r.cft.toFixed(1)}%</div>
                     </div>
                     <div className="text-right">
                       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Cuota</div>
-                      <div className="text-sm font-bold">{c != null ? `ARS ${fmtArs(c)}` : "—"}</div>
+                      <div className="whitespace-nowrap text-xs font-bold sm:text-sm">{c != null ? <><span className="hidden sm:inline">ARS </span>{fmtArs(c)}</> : "—"}</div>
                     </div>
                     <div className="text-right">
                       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">vs. mejor</div>
-                      <div className={`text-sm font-bold ${isFirst ? "text-success" : "text-destructive"}`}>
-                        {!available ? "Plazo no disponible" : isFirst ? "—" : `+ARS ${fmtArs(diff!)}`}
+                      <div className={`whitespace-nowrap text-xs font-bold sm:text-sm ${isFirst ? "text-success" : "text-destructive"}`}>
+                        {!available
+                          ? <><span className="sm:hidden">No disp.</span><span className="hidden sm:inline">No disponible</span></>
+                          : isFirst ? "—" : <>+<span className="hidden sm:inline">ARS </span>{fmtArs(diff!)}</>}
                       </div>
                     </div>
                   </div>
