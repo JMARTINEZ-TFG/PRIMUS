@@ -104,8 +104,10 @@ function UvaBadge() {
 
 // ─── Cálculo cuota (sistema francés) ─────────────────────────────────────────
 
+// El CFT es una tasa efectiva anual: la tasa mensual equivalente es
+// (1 + CFT)^(1/12) − 1, no CFT / 12 (eso la trataría como nominal)
 function cuotaMensual(cft: number, monto: number, meses: number): number {
-  const i = cft / 100 / 12;
+  const i = Math.pow(1 + cft / 100, 1 / 12) - 1;
   if (i === 0) return Math.round(monto / meses);
   return Math.round((monto * i) / (1 - Math.pow(1 + i, -meses)));
 }
